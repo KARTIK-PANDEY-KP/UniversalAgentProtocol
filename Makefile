@@ -27,7 +27,7 @@ benchmark-dry-run:
 	PYTHONPATH=. EXECUTOR_MODE=mock REGISTRY_MODE=yaml STORAGE_MODE=memory $(UV) run python scripts/benchmark_policy.py --dataset sample_datasets/basic_prompts.jsonl --policies always-strongest,always-cheapest --dry-run
 
 benchmark-canary-real:
-	PYTHONPATH=. RUN_REAL_PROVIDER_TESTS=$${RUN_REAL_PROVIDER_TESTS:-false} $(UV) run python scripts/benchmark_policy.py --datasets sample_datasets/basic_prompts.jsonl --policies always-strongest,always-cheapest --limit-per-dataset 1 --max-real-calls 2 --max-cost-usd 0.50 --timeout-seconds 30 --executor portkey
+	PYTHONPATH=. RUN_REAL_PROVIDER_TESTS=$${RUN_REAL_PROVIDER_TESTS:-false} $(UV) run python scripts/benchmark_policy.py --datasets sample_datasets/basic_prompts.jsonl --policies always-cheapest,always-fastest --limit-per-dataset 1 --max-real-calls 2 --max-cost-usd 0.50 --timeout-seconds 30 --executor portkey
 
 check: lint typecheck test smoke-mock benchmark-mock benchmark-dry-run
 

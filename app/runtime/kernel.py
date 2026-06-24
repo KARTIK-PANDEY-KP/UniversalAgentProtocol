@@ -22,7 +22,12 @@ from app.runtime.request_normalizer import normalize_chat_request
 from app.runtime.response_normalizer import ResponseNormalizer
 from app.runtime.route_plan_validator import RoutePlanValidator
 from app.storage.schemas import TraceRecord
-from app.storage.trace_repository import MemoryTraceRepository, TraceRepository
+from app.storage.supabase_client import SupabaseClient
+from app.storage.trace_repository import (
+    MemoryTraceRepository,
+    SupabaseTraceRepository,
+    TraceRepository,
+)
 
 
 class RuntimeKernel:
@@ -46,12 +51,17 @@ class RuntimeKernel:
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "RuntimeKernel":
+        trace_repository: TraceRepository
+        if settings.storage_mode == "supabase":
+            trace_repository = SupabaseTraceRepository(SupabaseClient.from_settings(settings))
+        else:
+            trace_repository = MemoryTraceRepository()
         return cls(
             model_registry=ModelRegistry.from_yaml(),
             policy_registry=PolicyRegistry.from_yaml(),
             tenant_registry=TenantRegistry.from_yaml(),
             executor=build_executor(settings),
-            trace_repository=MemoryTraceRepository(),
+            trace_repository=trace_repository,
         )
 
     def list_public_models(self) -> list[str]:

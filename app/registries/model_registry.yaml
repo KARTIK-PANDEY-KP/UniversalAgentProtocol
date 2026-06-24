@@ -12,15 +12,15 @@ models:
     limits:
       context_window: 128000
     cost:
-      input_per_million: 0.15
-      output_per_million: 0.60
+      input_per_million: 0.01
+      output_per_million: 0.03
     capabilities:
       overall: 0.72
       reasoning: 0.70
       coding: 0.68
       debugging: 0.66
       tool_use: 0.72
-      latency_score: 0.88
+      latency_score: 0.95
     metadata:
       tier: fast
   - id: openrouter:anthropic/claude-3-haiku
@@ -47,9 +47,9 @@ models:
       latency_score: 0.84
     metadata:
       tier: fast
-  - id: openrouter:anthropic/claude-3-5-sonnet
+  - id: openrouter:anthropic/claude-3.5-sonnet
     executor: portkey
-    executor_model: "@openrouter/anthropic/claude-3-5-sonnet"
+    executor_model: "@openrouter/anthropic/claude-3.5-sonnet"
     provider: openrouter
     status: enabled
     supports:
@@ -148,16 +148,16 @@ model_pools:
     - openrouter:openai/gpt-4o-mini
     - openrouter:anthropic/claude-3-haiku
     - openrouter:google/gemini-flash-1.5
-    - openrouter:anthropic/claude-3-5-sonnet
+    - openrouter:anthropic/claude-3.5-sonnet
   coding:
     - openrouter:qwen/qwen-2.5-coder-32b-instruct
-    - openrouter:anthropic/claude-3-5-sonnet
+    - openrouter:anthropic/claude-3.5-sonnet
     - openrouter:openai/gpt-4o-mini
   agent:
     - openrouter:anthropic/claude-3-haiku
     - openrouter:google/gemini-flash-1.5
-    - openrouter:anthropic/claude-3-5-sonnet
+    - openrouter:anthropic/claude-3.5-sonnet
   premium:
-    - openrouter:anthropic/claude-3-5-sonnet
+    - openrouter:anthropic/claude-3.5-sonnet
     - openrouter:openai/gpt-4o
     - openrouter:google/gemini-flash-1.5
