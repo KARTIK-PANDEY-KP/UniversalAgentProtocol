@@ -1,0 +1,38 @@
+policies:
+  - name: always-strongest
+    version: v0
+    type: baseline
+    status: enabled
+    supported_modes:
+      - single
+    config: {}
+  - name: always-cheapest
+    version: v0
+    type: baseline
+    status: enabled
+    supported_modes:
+      - single
+    config: {}
+  - name: always-fastest
+    version: v0
+    type: baseline
+    status: enabled
+    supported_modes:
+      - single
+    config: {}
+  - name: manual-rules
+    version: v0
+    type: baseline
+    status: enabled
+    supported_modes:
+      - single
+      - agent_step
+    config: {}
+  - name: random
+    version: v0
+    type: baseline
+    status: benchmark_only
+    supported_modes:
+      - single
+    config:
+      seed: 0

@@ -1,0 +1,41 @@
+public_model_aliases:
+  - public_model: brainbase-chat
+    policy_name: manual-rules
+    policy_version: v0
+    model_pool: default
+    mode: balanced
+    config: {}
+  - public_model: brainbase-code
+    policy_name: manual-rules
+    policy_version: v0
+    model_pool: coding
+    mode: code
+    config: {}
+  - public_model: brainbase-agent
+    policy_name: manual-rules
+    policy_version: v0
+    model_pool: agent
+    mode: agent
+    config: {}
+  - public_model: brainbase-fast
+    policy_name: always-fastest
+    policy_version: v0
+    model_pool: default
+    mode: fast
+    config: {}
+  - public_model: brainbase-premium
+    policy_name: always-strongest
+    policy_version: v0
+    model_pool: premium
+    mode: best
+    config:
+      allow_expensive_models: true
+tenants:
+  - tenant_id: default
+    allowed_public_models:
+      - brainbase-chat
+      - brainbase-code
+      - brainbase-agent
+      - brainbase-fast
+      - brainbase-premium
+    config: {}

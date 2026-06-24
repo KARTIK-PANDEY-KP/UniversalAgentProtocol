@@ -1,0 +1,163 @@
+models:
+  - id: openrouter:openai/gpt-4o-mini
+    executor: portkey
+    executor_model: "@openrouter/openai/gpt-4o-mini"
+    provider: openrouter
+    status: enabled
+    supports:
+      tools: true
+      vision: true
+      json: true
+      streaming: true
+    limits:
+      context_window: 128000
+    cost:
+      input_per_million: 0.15
+      output_per_million: 0.60
+    capabilities:
+      overall: 0.72
+      reasoning: 0.70
+      coding: 0.68
+      debugging: 0.66
+      tool_use: 0.72
+      latency_score: 0.88
+    metadata:
+      tier: fast
+  - id: openrouter:anthropic/claude-3-haiku
+    executor: portkey
+    executor_model: "@openrouter/anthropic/claude-3-haiku"
+    provider: openrouter
+    status: enabled
+    supports:
+      tools: true
+      vision: true
+      json: true
+      streaming: true
+    limits:
+      context_window: 200000
+    cost:
+      input_per_million: 0.25
+      output_per_million: 1.25
+    capabilities:
+      overall: 0.75
+      reasoning: 0.72
+      coding: 0.70
+      debugging: 0.70
+      tool_use: 0.78
+      latency_score: 0.84
+    metadata:
+      tier: fast
+  - id: openrouter:anthropic/claude-3-5-sonnet
+    executor: portkey
+    executor_model: "@openrouter/anthropic/claude-3-5-sonnet"
+    provider: openrouter
+    status: enabled
+    supports:
+      tools: true
+      vision: true
+      json: true
+      streaming: true
+    limits:
+      context_window: 200000
+    cost:
+      input_per_million: 3.0
+      output_per_million: 15.0
+    capabilities:
+      overall: 0.93
+      reasoning: 0.91
+      coding: 0.92
+      debugging: 0.91
+      tool_use: 0.90
+      latency_score: 0.55
+    metadata:
+      tier: premium
+  - id: openrouter:qwen/qwen-2.5-coder-32b-instruct
+    executor: portkey
+    executor_model: "@openrouter/qwen/qwen-2.5-coder-32b-instruct"
+    provider: openrouter
+    status: enabled
+    supports:
+      tools: true
+      vision: false
+      json: true
+      streaming: true
+    limits:
+      context_window: 32768
+    cost:
+      input_per_million: 0.8
+      output_per_million: 0.8
+    capabilities:
+      overall: 0.80
+      reasoning: 0.76
+      coding: 0.90
+      debugging: 0.88
+      tool_use: 0.76
+      latency_score: 0.75
+    metadata:
+      tier: coding
+  - id: openrouter:google/gemini-flash-1.5
+    executor: portkey
+    executor_model: "@openrouter/google/gemini-flash-1.5"
+    provider: openrouter
+    status: enabled
+    supports:
+      tools: true
+      vision: true
+      json: true
+      streaming: true
+    limits:
+      context_window: 1000000
+    cost:
+      input_per_million: 0.075
+      output_per_million: 0.30
+    capabilities:
+      overall: 0.78
+      reasoning: 0.75
+      coding: 0.72
+      debugging: 0.70
+      tool_use: 0.80
+      latency_score: 0.91
+    metadata:
+      tier: fast
+  - id: openrouter:openai/gpt-4o
+    executor: portkey
+    executor_model: "@openrouter/openai/gpt-4o"
+    provider: openrouter
+    status: disabled
+    supports:
+      tools: true
+      vision: true
+      json: true
+      streaming: true
+    limits:
+      context_window: 128000
+    cost:
+      input_per_million: 2.5
+      output_per_million: 10.0
+    capabilities:
+      overall: 0.90
+      reasoning: 0.88
+      coding: 0.86
+      debugging: 0.84
+      tool_use: 0.88
+      latency_score: 0.60
+    metadata:
+      tier: disabled_fixture
+model_pools:
+  default:
+    - openrouter:openai/gpt-4o-mini
+    - openrouter:anthropic/claude-3-haiku
+    - openrouter:google/gemini-flash-1.5
+    - openrouter:anthropic/claude-3-5-sonnet
+  coding:
+    - openrouter:qwen/qwen-2.5-coder-32b-instruct
+    - openrouter:anthropic/claude-3-5-sonnet
+    - openrouter:openai/gpt-4o-mini
+  agent:
+    - openrouter:anthropic/claude-3-haiku
+    - openrouter:google/gemini-flash-1.5
+    - openrouter:anthropic/claude-3-5-sonnet
+  premium:
+    - openrouter:anthropic/claude-3-5-sonnet
+    - openrouter:openai/gpt-4o
+    - openrouter:google/gemini-flash-1.5
