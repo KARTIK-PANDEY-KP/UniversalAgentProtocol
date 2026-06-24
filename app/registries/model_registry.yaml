@@ -54,9 +54,9 @@ models:
       model_pools:
         - default
         - agent
-  - id: openrouter:anthropic/claude-3.5-sonnet
+  - id: openrouter:anthropic/claude-sonnet-4.6
     executor: portkey
-    executor_model: "@openrouter/anthropic/claude-3.5-sonnet"
+    executor_model: "@openrouter/anthropic/claude-sonnet-4.6"
     provider: openrouter
     status: enabled
     supports:
@@ -109,9 +109,9 @@ models:
       tier: coding
       model_pools:
         - coding
-  - id: openrouter:google/gemini-flash-1.5
+  - id: openrouter:google/gemini-3.5-flash
     executor: portkey
-    executor_model: "@openrouter/google/gemini-flash-1.5"
+    executor_model: "@openrouter/google/gemini-3.5-flash"
     provider: openrouter
     status: enabled
     supports:
@@ -137,11 +137,11 @@ models:
         - default
         - agent
         - premium
-  - id: openrouter:openai/gpt-4o
+  - id: openrouter:openai/gpt-4o-2024-11-20
     executor: portkey
-    executor_model: "@openrouter/openai/gpt-4o"
+    executor_model: "@openrouter/openai/gpt-4o-2024-11-20"
     provider: openrouter
-    status: disabled
+    status: enabled
     supports:
       tools: true
       vision: true
@@ -160,26 +160,140 @@ models:
       tool_use: 0.88
       latency_score: 0.60
     metadata:
-      tier: disabled_fixture
+      tier: frontier
+      model_pools:
+        - premium
+  - id: openrouter:meta-llama/llama-3.2-3b-instruct
+    executor: portkey
+    executor_model: "@openrouter/meta-llama/llama-3.2-3b-instruct"
+    provider: openrouter
+    status: enabled
+    supports:
+      tools: false
+      vision: false
+      json: true
+      streaming: true
+    limits:
+      context_window: 131072
+    cost:
+      input_per_million: 0.02
+      output_per_million: 0.02
+    capabilities:
+      overall: 0.58
+      reasoning: 0.54
+      coding: 0.50
+      debugging: 0.50
+      tool_use: 0.35
+      latency_score: 0.94
+    metadata:
+      tier: open_source_small
+      model_pools:
+        - fast
+        - default
+  - id: openrouter:mistralai/mistral-small-2603
+    executor: portkey
+    executor_model: "@openrouter/mistralai/mistral-small-2603"
+    provider: openrouter
+    status: enabled
+    supports:
+      tools: true
+      vision: false
+      json: true
+      streaming: true
+    limits:
+      context_window: 128000
+    cost:
+      input_per_million: 0.1
+      output_per_million: 0.3
+    capabilities:
+      overall: 0.74
+      reasoning: 0.72
+      coding: 0.70
+      debugging: 0.68
+      tool_use: 0.70
+      latency_score: 0.86
+    metadata:
+      tier: open_source_medium
+      model_pools:
+        - default
+        - coding
+  - id: openrouter:meta-llama/llama-3.1-70b-instruct
+    executor: portkey
+    executor_model: "@openrouter/meta-llama/llama-3.1-70b-instruct"
+    provider: openrouter
+    status: enabled
+    supports:
+      tools: false
+      vision: false
+      json: true
+      streaming: true
+    limits:
+      context_window: 131072
+    cost:
+      input_per_million: 0.35
+      output_per_million: 0.4
+    capabilities:
+      overall: 0.84
+      reasoning: 0.82
+      coding: 0.78
+      debugging: 0.78
+      tool_use: 0.55
+      latency_score: 0.62
+    metadata:
+      tier: open_source_large
+      model_pools:
+        - default
+        - premium
+  - id: openrouter:anthropic/claude-opus-4.8-fast
+    executor: portkey
+    executor_model: "@openrouter/anthropic/claude-opus-4.8-fast"
+    provider: openrouter
+    status: enabled
+    supports:
+      tools: true
+      vision: true
+      json: true
+      streaming: true
+    limits:
+      context_window: 200000
+    cost:
+      input_per_million: 15.0
+      output_per_million: 75.0
+    capabilities:
+      overall: 0.98
+      reasoning: 0.98
+      coding: 0.95
+      debugging: 0.95
+      tool_use: 0.94
+      latency_score: 0.35
+    metadata:
+      tier: super_large
       model_pools:
         - premium
 model_pools:
   default:
     - openrouter:openai/gpt-4o-mini
     - openrouter:anthropic/claude-3-haiku
-    - openrouter:google/gemini-flash-1.5
-    - openrouter:anthropic/claude-3.5-sonnet
+    - openrouter:google/gemini-3.5-flash
+    - openrouter:anthropic/claude-sonnet-4.6
+    - openrouter:meta-llama/llama-3.2-3b-instruct
+    - openrouter:mistralai/mistral-small-2603
+    - openrouter:meta-llama/llama-3.1-70b-instruct
   fast:
     - openrouter:openai/gpt-4o-mini
+    - openrouter:meta-llama/llama-3.2-3b-instruct
   coding:
     - openrouter:qwen/qwen-2.5-coder-32b-instruct
-    - openrouter:anthropic/claude-3.5-sonnet
+    - openrouter:anthropic/claude-sonnet-4.6
     - openrouter:openai/gpt-4o-mini
+    - openrouter:mistralai/mistral-small-2603
   agent:
     - openrouter:anthropic/claude-3-haiku
-    - openrouter:google/gemini-flash-1.5
-    - openrouter:anthropic/claude-3.5-sonnet
+    - openrouter:google/gemini-3.5-flash
+    - openrouter:anthropic/claude-sonnet-4.6
   premium:
-    - openrouter:anthropic/claude-3.5-sonnet
-    - openrouter:openai/gpt-4o
-    - openrouter:google/gemini-flash-1.5
+    - openrouter:anthropic/claude-sonnet-4.6
+    - openrouter:openai/gpt-4o-2024-11-20
+    - openrouter:google/gemini-3.5-flash
+    - openrouter:meta-llama/llama-3.1-70b-instruct
+    - openrouter:anthropic/claude-opus-4.8-fast

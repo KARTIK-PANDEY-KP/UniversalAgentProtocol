@@ -43,4 +43,11 @@ All router plug-in real canary:
 RUN_REAL_PROVIDER_TESTS=true PORTKEY_API_KEY=... make benchmark-canary-real-routers
 ```
 
+Broad real model matrix:
+
+```bash
+RUN_REAL_PROVIDER_TESTS=true SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... \
+  PORTKEY_API_KEY=... make model-matrix-real
+```
+
 Do not put real provider calls in normal pytest suites.

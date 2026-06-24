@@ -17,7 +17,7 @@ def test_candidate_filtering_by_pool_excludes_disabled_models() -> None:
     registry = ModelRegistry.from_yaml()
     candidates = registry.candidates_for_pool("premium")
 
-    assert "openrouter:anthropic/claude-3.5-sonnet" in [model.id for model in candidates]
+    assert "openrouter:anthropic/claude-sonnet-4.6" in [model.id for model in candidates]
     assert "openrouter:openai/gpt-4o" not in [model.id for model in candidates]
 
 

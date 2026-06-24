@@ -62,6 +62,13 @@ All document-mentioned router adapter plug-ins can be exercised with:
 RUN_REAL_PROVIDER_TESTS=true PORTKEY_API_KEY=... make benchmark-canary-real-routers
 ```
 
+Broad OpenRouter model variety can be exercised with:
+
+```bash
+RUN_REAL_PROVIDER_TESTS=true SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... \
+  PORTKEY_API_KEY=... make model-matrix-real
+```
+
 Full benchmarks require explicit `--full --confirm-cost` flags and should not be run during MVP
 development.
 
