@@ -95,6 +95,113 @@ class HydraPolicy(ResearchAdapterPolicy):
     name = "hydra"
     native_router = "HyDRA capability-profile router"
 
+    dimensions = ("reasoning", "coding", "debugging", "tool_use")
+
+    def plan(
+        self,
+        request: RouterRequest,
+        candidates: list[ModelProfile],
+        context: RoutingContext,
+        budget: RoutingBudget,
+    ) -> RoutePlan:
+        requirements = self._predict_requirements(request)
+        weights = self._weights(context)
+        tau = float(context.policy_config.get("shortfall_tau", 0.20))
+        selected, shortfalls = self._shortfall_match(candidates, requirements, weights, tau)
+        return RoutePlan(
+            mode="single",
+            selected_model=selected.id,
+            fallback_models=self.fallbacks(selected, candidates),
+            confidence=max(0.2, min(0.99, 1.0 - shortfalls[selected.id])),
+            policy_name=self.name,
+            policy_version=self.version,
+            metadata={
+                "native_router": self.native_router,
+                "algorithm": "paper_shortfall_matching",
+                "input_features": self._signal_prefix(request),
+                "requirements": requirements,
+                "weights": weights,
+                "shortfall_tau": tau,
+                "shortfalls": shortfalls,
+                "upstream_code": "not_publicly_released",
+            },
+        )
+
+    def _predict_requirements(self, request: RouterRequest) -> dict[str, float]:
+        text = request_text(request)
+        prefix = self._signal_prefix(request)
+        requirements = {
+            "reasoning": 0.35,
+            "coding": 0.30,
+            "debugging": 0.25,
+            "tool_use": 0.20,
+        }
+        if prefix["has_code"] or request.public_model == "brainbase-code":
+            requirements["coding"] += 0.35
+            requirements["reasoning"] += 0.15
+        if prefix["has_error"]:
+            requirements["debugging"] += 0.45
+            requirements["reasoning"] += 0.10
+        if prefix["has_command"] or request.tools or request.public_model == "brainbase-agent":
+            requirements["tool_use"] += 0.45
+            requirements["reasoning"] += 0.10
+        if prefix["has_file"] or prefix["has_url"]:
+            requirements["reasoning"] += 0.20
+        if any(term in text for term in ["prove", "why", "compare", "tradeoff", "architecture"]):
+            requirements["reasoning"] += 0.30
+        if prefix["is_short"]:
+            requirements = {key: value * 0.75 for key, value in requirements.items()}
+        return {key: min(value, 1.0) for key, value in requirements.items()}
+
+    @staticmethod
+    def _signal_prefix(request: RouterRequest) -> dict[str, bool | str]:
+        text = request_text(request)
+        error_terms = ["error", "traceback", "exception", "failed"]
+        command_markers = ["npm ", "uv ", "python ", "git ", "make "]
+        code_markers = ["def ", "class ", "function ", "```", "import "]
+        return {
+            "turn_count_bin": "single_turn",
+            "has_error": any(term in text for term in error_terms),
+            "has_file": any(marker in text for marker in [".py", ".js", ".ts", ".md", "/"]),
+            "has_url": "http://" in text or "https://" in text,
+            "has_command": any(marker in text for marker in command_markers),
+            "has_code": any(marker in text for marker in code_markers),
+            "is_short": len(text.split()) <= 16,
+        }
+
+    def _shortfall_match(
+        self,
+        candidates: list[ModelProfile],
+        requirements: dict[str, float],
+        weights: dict[str, float],
+        tau: float,
+    ) -> tuple[ModelProfile, dict[str, float]]:
+        available = require_candidates(candidates)
+        shortfalls = {
+            model.id: sum(
+                weights[dimension]
+                * max(0.0, requirements[dimension] - capability_score(model, dimension))
+                for dimension in self.dimensions
+            )
+            for model in available
+        }
+        eligible = [model for model in available if shortfalls[model.id] <= tau]
+        if eligible:
+            return min(eligible, key=model_cost), shortfalls
+        selected = min(available, key=lambda model: (shortfalls[model.id], model_cost(model)))
+        return selected, shortfalls
+
+    def _weights(self, context: RoutingContext) -> dict[str, float]:
+        raw_weights = context.policy_config.get("weights", {})
+        weights = {
+            dimension: (
+                float(raw_weights.get(dimension, 1.0)) if isinstance(raw_weights, dict) else 1.0
+            )
+            for dimension in self.dimensions
+        }
+        total = sum(weights.values()) or 1.0
+        return {dimension: value / total for dimension, value in weights.items()}
+
 
 class GraphRouterPolicy(ResearchAdapterPolicy):
     name = "graphrouter"

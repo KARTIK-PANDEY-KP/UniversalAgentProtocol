@@ -41,7 +41,13 @@ policies:
     type: research_router
     status: benchmark_only
     supported_modes: [single]
-    config: {}
+    config:
+      shortfall_tau: 0.20
+      weights:
+        reasoning: 1.0
+        coding: 1.0
+        debugging: 1.2
+        tool_use: 1.2
   - name: graphrouter
     version: v0
     type: research_router
