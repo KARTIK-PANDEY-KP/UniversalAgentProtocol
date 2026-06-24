@@ -81,5 +81,6 @@ development.
 - [Testing](docs/testing.md)
 - [Benchmarking](docs/benchmarking.md)
 - [Router plug-ins](docs/router-plugins.md)
+- [Upstream router sources](docs/upstream-router-sources.md)
 - [Training data](docs/training-data.md)
 - [Deployment](docs/deployment.md)
