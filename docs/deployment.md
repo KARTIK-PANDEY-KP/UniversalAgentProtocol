@@ -22,3 +22,5 @@ The Docker command binds Uvicorn to `0.0.0.0:${PORT}` as required by Render. Sec
 in Render and never committed.
 
 Apply the database schema from `database/supabase_schema.sql` before enabling Supabase-backed storage.
+Seed `model_registry`, `policy_registry`, and `public_model_aliases` from the YAML registry files before
+serving traffic in `REGISTRY_MODE=supabase`.

@@ -3,6 +3,7 @@ from typing import Any
 from app.config import Settings
 from app.executor.execution_result import ExecutionResult
 from app.executor.fallback_executor import FallbackExecutor
+from app.executor.openrouter_model_resolver import resolve_openrouter_executor_model
 from app.executor.types import ChatExecutor
 from app.policies.always_strongest import AlwaysStrongestPolicy
 from app.protocol.model_profile import ModelProfile
@@ -51,15 +52,35 @@ class RuntimeKernel:
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "RuntimeKernel":
+        supabase_client: SupabaseClient | None = None
+        if settings.storage_mode == "supabase" or settings.registry_mode == "supabase":
+            supabase_client = SupabaseClient.from_settings(settings)
+
+        model_registry: ModelRegistry
+        policy_registry: PolicyRegistry
+        tenant_registry: TenantRegistry
+        if settings.registry_mode == "supabase":
+            if supabase_client is None:
+                raise ValueError("Supabase registry mode requires Supabase settings")
+            model_registry = ModelRegistry.from_supabase(supabase_client)
+            policy_registry = PolicyRegistry.from_supabase(supabase_client)
+            tenant_registry = TenantRegistry.from_supabase(supabase_client)
+        else:
+            model_registry = ModelRegistry.from_yaml()
+            policy_registry = PolicyRegistry.from_yaml()
+            tenant_registry = TenantRegistry.from_yaml()
+
         trace_repository: TraceRepository
         if settings.storage_mode == "supabase":
-            trace_repository = SupabaseTraceRepository(SupabaseClient.from_settings(settings))
+            if supabase_client is None:
+                raise ValueError("Supabase storage mode requires Supabase settings")
+            trace_repository = SupabaseTraceRepository(supabase_client)
         else:
             trace_repository = MemoryTraceRepository()
         return cls(
-            model_registry=ModelRegistry.from_yaml(),
-            policy_registry=PolicyRegistry.from_yaml(),
-            tenant_registry=TenantRegistry.from_yaml(),
+            model_registry=model_registry,
+            policy_registry=policy_registry,
+            tenant_registry=tenant_registry,
             executor=build_executor(settings),
             trace_repository=trace_repository,
         )
@@ -71,26 +92,34 @@ class RuntimeKernel:
         request = normalize_chat_request(payload)
         alias = self._public_model_resolver.resolve(request.public_model)
         tenant_config = self._tenant_registry.tenant_config(request.tenant_id)
-        budget = self._budget_from(alias, request.metadata.get("routing", {}))
+        routing_options = request.metadata.get("routing", {})
+        budget = self._budget_from(alias, routing_options)
         context = RoutingContext(
             tenant_config=tenant_config.model_dump(mode="json"),
             public_model_config=alias.model_dump(mode="json"),
             policy_config=alias.config,
         )
         candidates = self._candidate_resolver.candidates_for_pool(alias.model_pool)
-        policy = self._policy_loader.load(alias.policy_name, alias.policy_version)
-        try:
-            plan = policy.plan(request, candidates, context, budget)
-        except Exception:
-            plan = self._fallback_plan(request, candidates, context, budget, alias)
+        dynamic_plan = self._dynamic_passthrough_plan(request, alias, candidates, routing_options)
+        if dynamic_plan is not None:
+            plan = dynamic_plan
+        else:
+            policy = self._policy_loader.load(alias.policy_name, alias.policy_version)
+            try:
+                plan = policy.plan(request, candidates, context, budget)
+            except Exception:
+                plan = self._fallback_plan(request, candidates, context, budget, alias)
         self._validator.validate(plan, request, candidates, alias, budget)
+        shadow_plan = self._shadow_plan(
+            request, alias, candidates, context, budget, routing_options
+        )
         result = FallbackExecutor(self._executor, self._model_registry.get).execute(
             plan,
             request.messages,
             tools=request.tools,
             response_format=request.response_format,
         )
-        trace = self._trace_record(request, alias, plan, candidates, result)
+        trace = self._trace_record(request, alias, plan, candidates, result, shadow_plan)
         self._trace_repository.insert_trace(trace)
         return self._response_normalizer.normalize(request, result, plan)
 
@@ -123,6 +152,68 @@ class RuntimeKernel:
             update={"policy_name": alias.policy_name, "policy_version": alias.policy_version}
         )
 
+    def _dynamic_passthrough_plan(
+        self,
+        request: RouterRequest,
+        alias: PublicModelAlias,
+        candidates: list[ModelProfile],
+        routing: object,
+    ) -> RoutePlan | None:
+        if not isinstance(routing, dict):
+            return None
+        forced_model = routing.get("force_model")
+        debug_enabled = routing.get("debug") is True or routing.get("test_mode") is True
+        if not isinstance(forced_model, str) or not debug_enabled:
+            return None
+        executor_model = resolve_openrouter_executor_model(forced_model)
+        try:
+            model = self._model_registry.get(forced_model)
+        except Exception:
+            model = ModelProfile(
+                id=forced_model,
+                executor="portkey",
+                executor_model=executor_model,
+                provider="openrouter",
+                status="enabled",
+                supports={"tools": True, "vision": True, "json": True, "streaming": True},
+                limits={"context_window": 128000},
+                cost={"input_per_million": 0.0, "output_per_million": 0.0},
+                capabilities={"overall": 0.0, "latency_score": 0.0},
+                metadata={"dynamic_passthrough": True, "model_pools": [alias.model_pool]},
+            )
+            self._model_registry.add_model(model, [alias.model_pool])
+        if model.id not in [candidate.id for candidate in candidates]:
+            candidates.append(model)
+        return RoutePlan(
+            mode="single",
+            selected_model=model.id,
+            policy_name=alias.policy_name,
+            policy_version=alias.policy_version,
+            metadata={"dynamic_passthrough": True, "unverified": True},
+        )
+
+    def _shadow_plan(
+        self,
+        request: RouterRequest,
+        alias: PublicModelAlias,
+        candidates: list[ModelProfile],
+        context: RoutingContext,
+        budget: RoutingBudget,
+        routing: object,
+    ) -> RoutePlan | None:
+        shadow_policy_ref: object = alias.config.get("shadow_policy")
+        if isinstance(routing, dict) and routing.get("shadow_policy"):
+            shadow_policy_ref = routing["shadow_policy"]
+        if not isinstance(shadow_policy_ref, str):
+            return None
+        name, _, version = shadow_policy_ref.partition(":")
+        version = version or "v0"
+        policy = self._policy_loader.load(name, version)
+        shadow_alias = alias.model_copy(update={"policy_name": name, "policy_version": version})
+        plan = policy.plan(request, candidates, context, budget)
+        self._validator.validate(plan, request, candidates, shadow_alias, budget)
+        return plan
+
     @staticmethod
     def _trace_record(
         request: RouterRequest,
@@ -130,6 +221,7 @@ class RuntimeKernel:
         plan: RoutePlan,
         candidates: list[ModelProfile],
         result: ExecutionResult,
+        shadow_plan: RoutePlan | None = None,
     ) -> TraceRecord:
         del alias
         return TraceRecord(
@@ -148,4 +240,9 @@ class RuntimeKernel:
             latency_ms=result.latency_ms,
             status="ok",
             error=None,
+            shadow_plan=shadow_plan.model_dump(mode="json") if shadow_plan else None,
+            shadow_policy=(
+                f"{shadow_plan.policy_name}:{shadow_plan.policy_version}" if shadow_plan else None
+            ),
+            shadow_selected_model=shadow_plan.selected_model if shadow_plan else None,
         )

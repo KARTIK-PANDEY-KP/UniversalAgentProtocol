@@ -3,6 +3,7 @@ from pathlib import Path
 from app.protocol.model_profile import ModelProfile
 from app.registries.errors import UnknownModelError
 from app.registries.yaml_loader import load_yaml_mapping
+from app.storage.supabase_client import SupabaseClient
 
 DEFAULT_MODEL_REGISTRY_PATH = Path(__file__).with_name("model_registry.yaml")
 
@@ -23,8 +24,27 @@ class ModelRegistry:
         }
         return cls(models=models, pools=pools)
 
+    @classmethod
+    def from_supabase(cls, client: SupabaseClient) -> "ModelRegistry":
+        rows = client.select("model_registry")
+        models = [ModelProfile.model_validate(row) for row in rows]
+        pools: dict[str, list[str]] = {}
+        for model in models:
+            raw_pools = model.metadata.get("model_pools", [])
+            if isinstance(raw_pools, list):
+                for pool in raw_pools:
+                    pools.setdefault(str(pool), []).append(model.id)
+        return cls(models=models, pools=pools)
+
     def list_models(self) -> list[ModelProfile]:
         return list(self._models.values())
+
+    def add_model(self, model: ModelProfile, model_pools: list[str]) -> None:
+        self._models[model.id] = model
+        for model_pool in model_pools:
+            pool = self._pools.setdefault(model_pool, [])
+            if model.id not in pool:
+                pool.append(model.id)
 
     def get(self, model_id: str) -> ModelProfile:
         try:

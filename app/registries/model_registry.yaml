@@ -23,6 +23,9 @@ models:
       latency_score: 0.95
     metadata:
       tier: fast
+      model_pools:
+        - default
+        - coding
   - id: openrouter:anthropic/claude-3-haiku
     executor: portkey
     executor_model: "@openrouter/anthropic/claude-3-haiku"
@@ -47,6 +50,9 @@ models:
       latency_score: 0.84
     metadata:
       tier: fast
+      model_pools:
+        - default
+        - agent
   - id: openrouter:anthropic/claude-3.5-sonnet
     executor: portkey
     executor_model: "@openrouter/anthropic/claude-3.5-sonnet"
@@ -71,6 +77,11 @@ models:
       latency_score: 0.55
     metadata:
       tier: premium
+      model_pools:
+        - default
+        - coding
+        - agent
+        - premium
   - id: openrouter:qwen/qwen-2.5-coder-32b-instruct
     executor: portkey
     executor_model: "@openrouter/qwen/qwen-2.5-coder-32b-instruct"
@@ -95,6 +106,8 @@ models:
       latency_score: 0.75
     metadata:
       tier: coding
+      model_pools:
+        - coding
   - id: openrouter:google/gemini-flash-1.5
     executor: portkey
     executor_model: "@openrouter/google/gemini-flash-1.5"
@@ -119,6 +132,10 @@ models:
       latency_score: 0.91
     metadata:
       tier: fast
+      model_pools:
+        - default
+        - agent
+        - premium
   - id: openrouter:openai/gpt-4o
     executor: portkey
     executor_model: "@openrouter/openai/gpt-4o"
@@ -143,6 +160,8 @@ models:
       latency_score: 0.60
     metadata:
       tier: disabled_fixture
+      model_pools:
+        - premium
 model_pools:
   default:
     - openrouter:openai/gpt-4o-mini

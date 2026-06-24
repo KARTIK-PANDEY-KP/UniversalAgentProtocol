@@ -23,6 +23,14 @@ Real Supabase tests require:
 RUN_SUPABASE_TESTS=true make test tests/storage
 ```
 
+Real Supabase registry/storage/runtime integration tests require:
+
+```bash
+RUN_SUPABASE_TESTS=true RUN_REAL_PROVIDER_TESTS=true \
+  SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... PORTKEY_API_KEY=... \
+  uv run pytest tests/integration/test_real_supabase_runtime.py -q
+```
+
 Real Portkey/OpenRouter tests require:
 
 ```bash

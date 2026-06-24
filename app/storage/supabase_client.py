@@ -78,6 +78,55 @@ class SupabaseClient:
             return [item for item in body if isinstance(item, dict)]
         return []
 
+    def ensure_bucket(self, bucket: str, public: bool = False) -> None:
+        response = self._http_client.post(
+            f"{self._url}/storage/v1/bucket",
+            headers=self._headers(),
+            json={"id": bucket, "name": bucket, "public": public},
+        )
+        if response.status_code not in {200, 201, 409}:
+            response.raise_for_status()
+
+    def upload_object(
+        self,
+        bucket: str,
+        object_path: str,
+        content: bytes,
+        content_type: str = "application/octet-stream",
+        upsert: bool = True,
+    ) -> None:
+        response = self._http_client.post(
+            f"{self._url}/storage/v1/object/{bucket}/{object_path}",
+            headers=self._headers(
+                {
+                    "Content-Type": content_type,
+                    "x-upsert": "true" if upsert else "false",
+                }
+            ),
+            content=content,
+        )
+        response.raise_for_status()
+
+    def download_object(self, bucket: str, object_path: str) -> bytes:
+        response = self._http_client.get(
+            f"{self._url}/storage/v1/object/{bucket}/{object_path}",
+            headers=self._headers(),
+        )
+        response.raise_for_status()
+        return response.content
+
+    def list_objects(self, bucket: str, prefix: str = "") -> list[dict[str, Any]]:
+        response = self._http_client.post(
+            f"{self._url}/storage/v1/object/list/{bucket}",
+            headers=self._headers(),
+            json={"prefix": prefix},
+        )
+        response.raise_for_status()
+        body = response.json()
+        if isinstance(body, list):
+            return [item for item in body if isinstance(item, dict)]
+        return []
+
     def _headers(self, extra: dict[str, str] | None = None) -> dict[str, str]:
         headers = {
             "apikey": self._service_key,

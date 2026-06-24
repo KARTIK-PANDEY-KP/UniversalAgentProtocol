@@ -61,11 +61,13 @@ class PortkeyExecutor:
         if not choices:
             raise ProviderExecutionError("Portkey response did not include choices")
         message = choices[0].get("message", {})
+        raw_tool_calls = message.get("tool_calls")
         usage = body.get("usage", {})
         return ExecutionResult(
-            content=str(message.get("content", "")),
+            content=message.get("content"),
             model=str(body.get("model", model.executor_model)),
             finish_reason=str(choices[0].get("finish_reason", "stop")),
+            tool_calls=raw_tool_calls if isinstance(raw_tool_calls, list) else [],
             input_tokens=int(usage.get("prompt_tokens", 0)),
             output_tokens=int(usage.get("completion_tokens", 0)),
             cost_usd=self._parse_cost_header(response),

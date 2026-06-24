@@ -14,6 +14,9 @@ class ResponseNormalizer:
         result: ExecutionResult,
         plan: RoutePlan,
     ) -> dict[str, Any]:
+        message: dict[str, Any] = {"role": "assistant", "content": result.content}
+        if result.tool_calls:
+            message["tool_calls"] = result.tool_calls
         response: dict[str, Any] = {
             "id": f"chatcmpl_{uuid.uuid4().hex}",
             "object": "chat.completion",
@@ -22,7 +25,7 @@ class ResponseNormalizer:
             "choices": [
                 {
                     "index": 0,
-                    "message": {"role": "assistant", "content": result.content},
+                    "message": message,
                     "finish_reason": result.finish_reason,
                 }
             ],

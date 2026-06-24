@@ -4,9 +4,10 @@ from pydantic import BaseModel, Field
 
 
 class ExecutionResult(BaseModel):
-    content: str
+    content: str | None
     model: str
     finish_reason: str = "stop"
+    tool_calls: list[dict[str, Any]] = Field(default_factory=list)
     input_tokens: int = 0
     output_tokens: int = 0
     cost_usd: float = Field(default=0.0, ge=0.0)

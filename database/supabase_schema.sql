@@ -59,6 +59,10 @@ create table if not exists public.traces (
     created_at timestamptz not null default now()
 );
 
+alter table public.traces add column if not exists shadow_plan jsonb;
+alter table public.traces add column if not exists shadow_policy text;
+alter table public.traces add column if not exists shadow_selected_model text;
+
 create table if not exists public.benchmark_runs (
     id uuid primary key default gen_random_uuid(),
     name text not null,

@@ -19,6 +19,9 @@ class TraceRecord(BaseModel):
     latency_ms: int = 0
     status: str = "ok"
     error: str | None = None
+    shadow_plan: dict[str, Any] | None = None
+    shadow_policy: str | None = None
+    shadow_selected_model: str | None = None
 
 
 class BenchmarkRunRecord(BaseModel):

@@ -52,6 +52,10 @@ RUN_REAL_PROVIDER_TESTS=true make smoke-real
 RUN_REAL_PROVIDER_TESTS=true make benchmark-canary-real
 ```
 
+Real Supabase registry/storage/runtime checks are available under
+`tests/integration/test_real_supabase_runtime.py` and require explicit real-test flags plus Supabase and
+Portkey credentials.
+
 Full benchmarks require explicit `--full --confirm-cost` flags and should not be run during MVP
 development.
 

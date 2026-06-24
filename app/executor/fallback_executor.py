@@ -22,7 +22,7 @@ class FallbackExecutor:
         tools: list[dict[str, Any]] | None = None,
         response_format: dict[str, Any] | None = None,
     ) -> ExecutionResult:
-        model_ids = [plan.selected_model, *plan.fallback_models]
+        model_ids = self._execution_model_ids(plan)
         last_error: ProviderExecutionError | None = None
         executable_model_ids = [model_id for model_id in model_ids if model_id is not None]
         for index, model_id in enumerate(executable_model_ids):
@@ -40,3 +40,9 @@ class FallbackExecutor:
         if last_error is not None:
             raise last_error
         raise ProviderExecutionError("RoutePlan did not include an executable selected model")
+
+    @staticmethod
+    def _execution_model_ids(plan: RoutePlan) -> list[str | None] | list[str]:
+        if plan.mode == "cascade":
+            return [step.model for step in plan.steps] + plan.fallback_models
+        return [plan.selected_model, *plan.fallback_models]

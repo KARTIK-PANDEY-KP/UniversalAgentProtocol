@@ -3,6 +3,7 @@ from pathlib import Path
 from app.registries.errors import UnknownPublicModelError
 from app.registries.schemas import PublicModelAlias, TenantConfig
 from app.registries.yaml_loader import load_yaml_mapping
+from app.storage.supabase_client import SupabaseClient
 
 DEFAULT_TENANT_CONFIG_PATH = Path(__file__).with_name("tenant_config.yaml")
 
@@ -19,6 +20,20 @@ class TenantRegistry:
             PublicModelAlias.model_validate(item) for item in data.get("public_model_aliases", [])
         ]
         tenants = [TenantConfig.model_validate(item) for item in data.get("tenants", [])]
+        return cls(public_aliases=aliases, tenants=tenants)
+
+    @classmethod
+    def from_supabase(cls, client: SupabaseClient) -> "TenantRegistry":
+        aliases = [
+            PublicModelAlias.model_validate(row)
+            for row in client.select("public_model_aliases", {"select": "*"})
+        ]
+        tenants = [
+            TenantConfig(
+                tenant_id="default",
+                allowed_public_models=[alias.public_model for alias in aliases],
+            )
+        ]
         return cls(public_aliases=aliases, tenants=tenants)
 
     def list_public_models(self) -> list[str]:
