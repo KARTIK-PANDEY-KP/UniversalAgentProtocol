@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: brainbase-model-runtime
+    env: docker
+    plan: starter
+    autoDeploy: true
+    envVars:
+      - key: EXECUTOR_MODE
+        value: portkey
+      - key: REGISTRY_MODE
+        value: supabase
+      - key: STORAGE_MODE
+        value: supabase
+      - key: PORTKEY_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false
+      - key: SUPABASE_PUBLISHABLE_KEY
+        sync: false

@@ -1,0 +1,1 @@
+{"id":"basic_001","public_model":"brainbase-chat","messages":[{"role":"user","content":"Say hello in one sentence."}],"category":"chat","difficulty":"easy","expected_behavior":"Return a concise greeting."}

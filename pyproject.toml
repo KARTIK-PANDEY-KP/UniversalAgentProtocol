@@ -1,0 +1,41 @@
+[project]
+name = "brainbase-model-runtime"
+version = "0.1.0"
+description = "Backend-only Brainbase Model Runtime MVP shell."
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.138.0",
+    "httpx>=0.28.1",
+    "pydantic>=2.13.4",
+    "pydantic-settings>=2.14.2",
+    "pyyaml>=6.0.3",
+    "uvicorn>=0.49.0",
+]
+
+[dependency-groups]
+dev = [
+    "mypy>=2.1.0",
+    "pytest>=9.1.1",
+    "ruff>=0.15.19",
+    "types-pyyaml>=6.0.12.20260518",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.12"
+packages = ["app"]
+strict = true
+warn_unused_ignores = true
+warn_return_any = true
+disallow_untyped_defs = true
