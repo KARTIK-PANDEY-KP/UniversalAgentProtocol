@@ -35,6 +35,9 @@ benchmark-canary-real-routers:
 model-matrix-real:
 	PYTHONPATH=. RUN_REAL_PROVIDER_TESTS=$${RUN_REAL_PROVIDER_TESTS:-false} $(UV) run python scripts/test_model_matrix_real.py
 
+advanced-modes-real:
+	PYTHONPATH=. RUN_REAL_PROVIDER_TESTS=$${RUN_REAL_PROVIDER_TESTS:-false} $(UV) run python scripts/test_advanced_modes_real.py
+
 check: lint typecheck test smoke-mock benchmark-mock benchmark-dry-run
 
 %:

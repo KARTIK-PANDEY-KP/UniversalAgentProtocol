@@ -309,10 +309,11 @@ class R2RouterPolicy(ResearchAdapterPolicy):
         plan = super().plan(request, candidates, context, budget)
         return plan.model_copy(
             update={
+                "mode": "budgeted_single",
                 "metadata": {
                     **plan.metadata,
                     "native_mode": "budgeted_single",
-                    "generation": {"max_tokens": 700, "length_instruction": "Answer concisely."},
+                    "generation": {"max_tokens": 64, "length_instruction": "Answer concisely."},
                 }
             }
         )
@@ -339,9 +340,22 @@ class RouterR1Policy(RouteNLPPolicy):
         context: RoutingContext,
         budget: RoutingBudget,
     ) -> RoutePlan:
-        plan = super().plan(request, candidates, context, budget)
-        return plan.model_copy(
-            update={"metadata": {**plan.metadata, "native_mode": "multi_call"}}
+        capability = infer_capability(request, budget)
+        available = require_candidates(candidates)
+        planner = choose_best(available, key=lambda model: efficient_score(model, "reasoning"))
+        executor = choose_best(available, key=lambda model: capability_score(model, capability))
+        judge = choose_best(available, key=lambda model: capability_score(model, "reasoning"))
+        return RoutePlan(
+            mode="multi_call",
+            steps=[
+                RouteStep(model=planner.id, role="planner", max_tokens=64),
+                RouteStep(model=executor.id, role="implementation", max_tokens=64),
+                RouteStep(model=judge.id, role="judge_merge", max_tokens=64),
+            ],
+            confidence=0.78,
+            policy_name=self.name,
+            policy_version=self.version,
+            metadata={"native_router": self.native_router, "native_mode": "multi_call"},
         )
 
 
@@ -374,13 +388,25 @@ class RCRRouterPolicy(ResearchAdapterPolicy):
         plan = super().plan(request, candidates, context, budget)
         return plan.model_copy(
             update={
+                "mode": "context_routing",
                 "metadata": {
                     **plan.metadata,
                     "native_mode": "context_routing",
-                    "context_plan": {"max_context_tokens": 12000, "include_memory_ids": []},
+                    "context_plan": {
+                        "max_context_tokens": 12000,
+                        "include_memory_ids": [],
+                        "context_snippets": self._context_snippets(request),
+                    },
                 }
             }
         )
+
+    @staticmethod
+    def _context_snippets(request: RouterRequest) -> list[str]:
+        memories = request.metadata.get("memory")
+        if isinstance(memories, list):
+            return [str(memory) for memory in memories[:3]]
+        return []
 
 
 class BoundaryRouterPolicy(GraphRouterPolicy):

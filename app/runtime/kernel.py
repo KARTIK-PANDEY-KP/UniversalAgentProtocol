@@ -15,6 +15,7 @@ from app.registries.model_registry import ModelRegistry
 from app.registries.policy_registry import PolicyRegistry
 from app.registries.schemas import PublicModelAlias
 from app.registries.tenant_registry import TenantRegistry
+from app.runtime.conversation_features import build_conversation_features
 from app.runtime.executor_factory import build_executor
 from app.runtime.model_candidate_resolver import ModelCandidateResolver
 from app.runtime.policy_loader import PolicyLoader
@@ -94,9 +95,16 @@ class RuntimeKernel:
         tenant_config = self._tenant_registry.tenant_config(request.tenant_id)
         routing_options = request.metadata.get("routing", {})
         budget = self._budget_from(alias, routing_options)
+        conversation_features = build_conversation_features(request.messages)
         context = RoutingContext(
             tenant_config=tenant_config.model_dump(mode="json"),
             public_model_config=alias.model_dump(mode="json"),
+            workflow_context={
+                "workflow_id": request.workflow_id,
+                "step_id": request.step_id,
+                "conversation_features": conversation_features,
+            },
+            historical_performance={"source": "trace_placeholder"},
             policy_config=alias.config,
         )
         candidates = self._candidate_resolver.candidates_for_pool(alias.model_pool)

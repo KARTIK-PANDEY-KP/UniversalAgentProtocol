@@ -11,5 +11,6 @@ class ChatExecutor(Protocol):
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None = None,
         response_format: dict[str, Any] | None = None,
+        max_tokens: int | None = None,
     ) -> ExecutionResult:
         """Execute a validated model profile."""

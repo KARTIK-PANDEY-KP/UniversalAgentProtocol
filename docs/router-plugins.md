@@ -44,9 +44,15 @@ The capability predictor is currently a deterministic feature heuristic because 
 checkpoint/heads are not public. The policy metadata records `upstream_code=not_publicly_released`, and
 the adapter seam can be swapped to a real checkpoint if one is released.
 
-Native router modes that are not fully executable in the MVP, such as `multi_call`,
-`budgeted_single`, and `context_routing`, are represented in `RoutePlan.metadata.native_mode`
-while returning an executable MVP mode (`single`, `cascade`, or `agent_step`).
+Advanced router modes are executable in the runtime:
+
+- `multi_call`: executes each `RouteStep` and returns the judge/final stage output.
+- `budgeted_single`: passes the route plan generation token budget to Portkey.
+- `context_routing`: prepends selected context snippets before model execution.
+- `agent_step`: records workflow/step context and executes the selected model for that agent step.
+
+Some research adapters still include `RoutePlan.metadata.native_mode` so later exact upstream bridges can
+preserve the source paper's native terminology.
 
 Run a real capped canary across all adapters:
 

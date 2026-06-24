@@ -11,8 +11,9 @@ class MockExecutor:
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None = None,
         response_format: dict[str, Any] | None = None,
+        max_tokens: int | None = None,
     ) -> ExecutionResult:
-        del tools, response_format
+        del tools, response_format, max_tokens
         prompt_text = " ".join(str(message.get("content", "")) for message in messages)
         content = f"Brainbase mock response from {model.id}: {prompt_text[:80]}".strip()
         prompt_tokens = max(1, len(prompt_text.split()))

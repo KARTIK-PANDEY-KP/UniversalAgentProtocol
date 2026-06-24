@@ -5,7 +5,14 @@ from app.protocol.routing_budget import RoutingBudget
 from app.registries.schemas import PublicModelAlias
 from app.runtime.errors import RoutePlanValidationError
 
-EXECUTABLE_MODES = {"single", "cascade", "agent_step"}
+EXECUTABLE_MODES = {
+    "single",
+    "cascade",
+    "agent_step",
+    "multi_call",
+    "budgeted_single",
+    "context_routing",
+}
 
 
 class RoutePlanValidator:
@@ -23,6 +30,8 @@ class RoutePlanValidator:
             raise RoutePlanValidationError("RoutePlan policy does not match public model alias")
         if plan.mode == "cascade" and len(plan.steps) > budget.max_cascade_depth:
             raise RoutePlanValidationError("RoutePlan exceeds max cascade depth")
+        if plan.mode == "multi_call" and not budget.allow_multi_call:
+            raise RoutePlanValidationError("RoutePlan multi_call requires allow_multi_call=true")
 
         candidate_by_id = {candidate.id: candidate for candidate in candidates}
         model_ids = self._model_ids(plan)

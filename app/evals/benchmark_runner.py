@@ -96,7 +96,11 @@ class BenchmarkRunner:
             metadata={"benchmark_dataset": str(dataset_path)},
         )
         policy = self._policy_loader.load(policy_name, "v0")
-        budget = RoutingBudget(mode=alias.mode)
+        budget = RoutingBudget(
+            mode=alias.mode,
+            allow_multi_call=policy_name in {"router-r1"},
+            max_cascade_depth=3,
+        )
         context = RoutingContext(public_model_config=benchmark_alias.model_dump(mode="json"))
         plan = policy.plan(request, candidates, context, budget)
         self._validator.validate(plan, request, candidates, benchmark_alias, budget)

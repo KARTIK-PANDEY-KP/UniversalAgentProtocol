@@ -50,4 +50,11 @@ RUN_REAL_PROVIDER_TESTS=true SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... \
   PORTKEY_API_KEY=... make model-matrix-real
 ```
 
+Advanced runtime modes:
+
+```bash
+RUN_REAL_PROVIDER_TESTS=true SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... \
+  PORTKEY_API_KEY=... make advanced-modes-real
+```
+
 Do not put real provider calls in normal pytest suites.
