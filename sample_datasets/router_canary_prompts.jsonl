@@ -1,0 +1,1 @@
+{"id":"router_canary_001","public_model":"brainbase-fast","messages":[{"role":"user","content":"Reply with exactly: ok"}],"category":"router_canary","difficulty":"easy","expected_behavior":"Return a tiny response for capped real router plugin checks."}

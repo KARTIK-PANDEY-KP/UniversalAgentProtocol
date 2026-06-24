@@ -56,6 +56,12 @@ Real Supabase registry/storage/runtime checks are available under
 `tests/integration/test_real_supabase_runtime.py` and require explicit real-test flags plus Supabase and
 Portkey credentials.
 
+All document-mentioned router adapter plug-ins can be exercised with:
+
+```bash
+RUN_REAL_PROVIDER_TESTS=true PORTKEY_API_KEY=... make benchmark-canary-real-routers
+```
+
 Full benchmarks require explicit `--full --confirm-cost` flags and should not be run during MVP
 development.
 
@@ -67,4 +73,6 @@ development.
 - [Add a new policy](docs/add-new-policy.md)
 - [Testing](docs/testing.md)
 - [Benchmarking](docs/benchmarking.md)
+- [Router plug-ins](docs/router-plugins.md)
+- [Training data](docs/training-data.md)
 - [Deployment](docs/deployment.md)

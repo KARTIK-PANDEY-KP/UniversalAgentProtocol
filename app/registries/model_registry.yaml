@@ -26,6 +26,7 @@ models:
       model_pools:
         - default
         - coding
+        - fast
   - id: openrouter:anthropic/claude-3-haiku
     executor: portkey
     executor_model: "@openrouter/anthropic/claude-3-haiku"
@@ -168,6 +169,8 @@ model_pools:
     - openrouter:anthropic/claude-3-haiku
     - openrouter:google/gemini-flash-1.5
     - openrouter:anthropic/claude-3.5-sonnet
+  fast:
+    - openrouter:openai/gpt-4o-mini
   coding:
     - openrouter:qwen/qwen-2.5-coder-32b-instruct
     - openrouter:anthropic/claude-3.5-sonnet

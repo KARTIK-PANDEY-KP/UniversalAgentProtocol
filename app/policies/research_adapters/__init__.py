@@ -1,11 +1,4 @@
-"""RouterPolicy plug-ins."""
-
-from app.policies.always_cheapest import AlwaysCheapestPolicy
-from app.policies.always_fastest import AlwaysFastestPolicy
-from app.policies.always_strongest import AlwaysStrongestPolicy
-from app.policies.manual_rules import ManualRulesPolicy
-from app.policies.random_policy import RandomPolicy
-from app.policies.research_adapters import (
+from app.policies.research_adapters.policy import (
     AvengersProPolicy,
     BaRPPolicy,
     BoundaryRouterPolicy,
@@ -29,9 +22,6 @@ from app.policies.research_adapters import (
 )
 
 __all__ = [
-    "AlwaysCheapestPolicy",
-    "AlwaysFastestPolicy",
-    "AlwaysStrongestPolicy",
     "AvengersProPolicy",
     "BaRPPolicy",
     "BoundaryRouterPolicy",
@@ -42,14 +32,12 @@ __all__ = [
     "HydraPolicy",
     "LLMRouterPolicy",
     "LookaheadPolicy",
-    "ManualRulesPolicy",
     "MFRouterPolicy",
     "MTRouterPolicy",
     "OrcaRouterPolicy",
     "PolicyGuidedStepwisePolicy",
     "R2RouterPolicy",
     "RCRRouterPolicy",
-    "RandomPolicy",
     "RouteNLPPolicy",
     "RouterR1Policy",
     "TRouterPolicy",

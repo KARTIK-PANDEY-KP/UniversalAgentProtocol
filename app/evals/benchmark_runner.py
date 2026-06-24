@@ -5,6 +5,7 @@ from typing import Any
 from app.config import Settings
 from app.evals.report_generator import summarize_results
 from app.evals.scoring import estimate_model_cost_usd
+from app.executor.fallback_executor import FallbackExecutor
 from app.executor.mock_executor import MockExecutor
 from app.executor.types import ChatExecutor
 from app.protocol.router_request import RouterRequest
@@ -104,7 +105,9 @@ class BenchmarkRunner:
         estimated_cost = estimate_model_cost_usd(model)
         content = None
         if not dry_run:
-            content = executor.execute(model, request.messages).content
+            content = FallbackExecutor(executor, self._model_registry.get).execute(
+                plan, request.messages
+            ).content
         return {
             "id": row["id"],
             "dataset": str(dataset_path),

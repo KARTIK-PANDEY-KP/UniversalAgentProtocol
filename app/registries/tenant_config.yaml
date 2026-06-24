@@ -20,7 +20,7 @@ public_model_aliases:
   - public_model: brainbase-fast
     policy_name: always-fastest
     policy_version: v0
-    model_pool: default
+    model_pool: fast
     mode: fast
     config: {}
   - public_model: brainbase-premium

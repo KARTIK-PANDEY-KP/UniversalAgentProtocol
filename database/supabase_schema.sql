@@ -62,6 +62,17 @@ create table if not exists public.traces (
 alter table public.traces add column if not exists shadow_plan jsonb;
 alter table public.traces add column if not exists shadow_policy text;
 alter table public.traces add column if not exists shadow_selected_model text;
+alter table public.traces add column if not exists request_messages jsonb not null default '[]'::jsonb;
+alter table public.traces add column if not exists request_tools jsonb;
+alter table public.traces add column if not exists response_format jsonb;
+alter table public.traces add column if not exists routing_budget jsonb not null default '{}'::jsonb;
+alter table public.traces add column if not exists routing_context jsonb not null default '{}'::jsonb;
+alter table public.traces add column if not exists policy_metadata jsonb not null default '{}'::jsonb;
+alter table public.traces add column if not exists response_content text;
+alter table public.traces add column if not exists response_tool_calls jsonb not null default '[]'::jsonb;
+alter table public.traces add column if not exists execution_metadata jsonb not null default '{}'::jsonb;
+alter table public.traces add column if not exists feedback_signals jsonb not null default '{}'::jsonb;
+alter table public.traces add column if not exists training_labels jsonb not null default '{}'::jsonb;
 
 create table if not exists public.benchmark_runs (
     id uuid primary key default gen_random_uuid(),

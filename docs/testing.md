@@ -37,4 +37,10 @@ Real Portkey/OpenRouter tests require:
 RUN_REAL_PROVIDER_TESTS=true make smoke-real
 ```
 
+All router plug-in real canary:
+
+```bash
+RUN_REAL_PROVIDER_TESTS=true PORTKEY_API_KEY=... make benchmark-canary-real-routers
+```
+
 Do not put real provider calls in normal pytest suites.

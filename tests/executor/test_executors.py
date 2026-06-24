@@ -31,6 +31,7 @@ def test_mock_executor_returns_valid_execution_result() -> None:
         [{"role": "user", "content": "Say hello"}],
     )
 
+    assert result.content is not None
     assert result.content.startswith("Brainbase mock response")
     assert result.input_tokens > 0
     assert result.output_tokens > 0

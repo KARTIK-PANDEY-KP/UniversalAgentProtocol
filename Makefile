@@ -29,6 +29,9 @@ benchmark-dry-run:
 benchmark-canary-real:
 	PYTHONPATH=. RUN_REAL_PROVIDER_TESTS=$${RUN_REAL_PROVIDER_TESTS:-false} $(UV) run python scripts/benchmark_policy.py --datasets sample_datasets/basic_prompts.jsonl --policies always-cheapest,always-fastest --limit-per-dataset 1 --max-real-calls 2 --max-cost-usd 0.50 --timeout-seconds 30 --executor portkey
 
+benchmark-canary-real-routers:
+	PYTHONPATH=. RUN_REAL_PROVIDER_TESTS=$${RUN_REAL_PROVIDER_TESTS:-false} $(UV) run python scripts/benchmark_policy.py --datasets sample_datasets/router_canary_prompts.jsonl --policies hydra,graphrouter,llmrouter,mf-router,avengers-pro,routenlp,twinrouterbench,mtrouter,gmtrouter,policy-guided-stepwise,r2-router,orcarouter,barp,router-r1,decor,lookahead,trouter,rcr-router,boundary-router,brainbase-trained --limit-per-dataset 1 --max-real-calls 20 --max-cost-usd 0.50 --timeout-seconds 60 --executor portkey
+
 check: lint typecheck test smoke-mock benchmark-mock benchmark-dry-run
 
 %:

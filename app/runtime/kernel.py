@@ -119,7 +119,16 @@ class RuntimeKernel:
             tools=request.tools,
             response_format=request.response_format,
         )
-        trace = self._trace_record(request, alias, plan, candidates, result, shadow_plan)
+        trace = self._trace_record(
+            request=request,
+            alias=alias,
+            plan=plan,
+            candidates=candidates,
+            result=result,
+            budget=budget,
+            context=context,
+            shadow_plan=shadow_plan,
+        )
         self._trace_repository.insert_trace(trace)
         return self._response_normalizer.normalize(request, result, plan)
 
@@ -221,6 +230,8 @@ class RuntimeKernel:
         plan: RoutePlan,
         candidates: list[ModelProfile],
         result: ExecutionResult,
+        budget: RoutingBudget,
+        context: RoutingContext,
         shadow_plan: RoutePlan | None = None,
     ) -> TraceRecord:
         del alias
@@ -234,6 +245,25 @@ class RuntimeKernel:
             selected_model=plan.selected_model,
             candidate_models=[candidate.id for candidate in candidates],
             fallback_used=result.fallback_used,
+            request_messages=request.messages,
+            request_tools=request.tools,
+            response_format=request.response_format,
+            routing_budget=budget.model_dump(mode="json"),
+            routing_context=context.model_dump(mode="json"),
+            policy_metadata=plan.metadata,
+            response_content=result.content,
+            response_tool_calls=result.tool_calls,
+            execution_metadata=result.raw_response,
+            feedback_signals={
+                "tool_success": None,
+                "workflow_success": None,
+                "user_feedback": None,
+            },
+            training_labels={
+                "selected_model": plan.selected_model,
+                "fallback_used": result.fallback_used,
+                "status": "ok",
+            },
             input_tokens=result.input_tokens,
             output_tokens=result.output_tokens,
             cost_usd=result.cost_usd,

@@ -36,3 +36,124 @@ policies:
       - single
     config:
       seed: 0
+  - name: hydra
+    version: v0
+    type: research_router
+    status: benchmark_only
+    supported_modes: [single]
+    config: {}
+  - name: graphrouter
+    version: v0
+    type: research_router
+    status: benchmark_only
+    supported_modes: [single]
+    config: {}
+  - name: llmrouter
+    version: v0
+    type: research_router
+    status: benchmark_only
+    supported_modes: [single]
+    config: {}
+  - name: mf-router
+    version: v0
+    type: research_router
+    status: benchmark_only
+    supported_modes: [single]
+    config: {}
+  - name: avengers-pro
+    version: v0
+    type: research_router
+    status: benchmark_only
+    supported_modes: [single]
+    config: {}
+  - name: routenlp
+    version: v0
+    type: research_router
+    status: benchmark_only
+    supported_modes: [cascade]
+    config: {}
+  - name: twinrouterbench
+    version: v0
+    type: research_router
+    status: benchmark_only
+    supported_modes: [agent_step]
+    config: {}
+  - name: mtrouter
+    version: v0
+    type: research_router
+    status: benchmark_only
+    supported_modes: [agent_step]
+    config: {}
+  - name: gmtrouter
+    version: v0
+    type: research_router
+    status: benchmark_only
+    supported_modes: [agent_step]
+    config: {}
+  - name: policy-guided-stepwise
+    version: v0
+    type: research_router
+    status: benchmark_only
+    supported_modes: [agent_step]
+    config: {}
+  - name: r2-router
+    version: v0
+    type: research_router
+    status: benchmark_only
+    supported_modes: [single]
+    config: {}
+  - name: orcarouter
+    version: v0
+    type: research_router
+    status: benchmark_only
+    supported_modes: [single]
+    config: {}
+  - name: barp
+    version: v0
+    type: research_router
+    status: benchmark_only
+    supported_modes: [single]
+    config: {}
+  - name: router-r1
+    version: v0
+    type: research_router
+    status: benchmark_only
+    supported_modes: [cascade]
+    config: {}
+  - name: decor
+    version: v0
+    type: research_router
+    status: benchmark_only
+    supported_modes: [single]
+    config: {}
+  - name: lookahead
+    version: v0
+    type: research_router
+    status: benchmark_only
+    supported_modes: [single]
+    config: {}
+  - name: trouter
+    version: v0
+    type: research_router
+    status: benchmark_only
+    supported_modes: [single]
+    config: {}
+  - name: rcr-router
+    version: v0
+    type: research_router
+    status: benchmark_only
+    supported_modes: [single]
+    config: {}
+  - name: boundary-router
+    version: v0
+    type: research_router
+    status: benchmark_only
+    supported_modes: [single]
+    config: {}
+  - name: brainbase-trained
+    version: v0
+    type: trained_router
+    status: benchmark_only
+    artifact_uri: supabase://router-artifacts/brainbase-trained/v0/manifest.json
+    supported_modes: [single]
+    config: {}

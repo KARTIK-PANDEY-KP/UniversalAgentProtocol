@@ -13,6 +13,17 @@ class TraceRecord(BaseModel):
     selected_model: str | None = None
     candidate_models: list[str] = Field(default_factory=list)
     fallback_used: bool = False
+    request_messages: list[dict[str, Any]] = Field(default_factory=list)
+    request_tools: list[dict[str, Any]] | None = None
+    response_format: dict[str, Any] | None = None
+    routing_budget: dict[str, Any] = Field(default_factory=dict)
+    routing_context: dict[str, Any] = Field(default_factory=dict)
+    policy_metadata: dict[str, Any] = Field(default_factory=dict)
+    response_content: str | None = None
+    response_tool_calls: list[dict[str, Any]] = Field(default_factory=list)
+    execution_metadata: dict[str, Any] = Field(default_factory=dict)
+    feedback_signals: dict[str, Any] = Field(default_factory=dict)
+    training_labels: dict[str, Any] = Field(default_factory=dict)
     input_tokens: int = 0
     output_tokens: int = 0
     cost_usd: float = 0.0

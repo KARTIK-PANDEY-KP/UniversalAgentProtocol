@@ -84,6 +84,8 @@ class SupabaseClient:
             headers=self._headers(),
             json={"id": bucket, "name": bucket, "public": public},
         )
+        if response.status_code == 400 and "already exists" in response.text:
+            return
         if response.status_code not in {200, 201, 409}:
             response.raise_for_status()
 

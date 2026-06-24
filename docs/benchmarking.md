@@ -25,3 +25,26 @@ Canary real mode requires:
 
 Full benchmarks refuse to run without both `--full` and `--confirm-cost`. Do not run full benchmarks
 during MVP development.
+
+## Benchmark catalog
+
+The benchmark downloader tracks the benchmark resources named in the source documents:
+
+- LLMRouterBench
+- TwinRouterBench
+- RouteJudge
+- ORBIT
+- BoundaryRouter / RouteBench
+
+Metadata-only materialization:
+
+```bash
+PYTHONPATH=. uv run python scripts/download_benchmark.py --all
+```
+
+Network fetches require explicit confirmation:
+
+```bash
+PYTHONPATH=. uv run python scripts/download_benchmark.py \
+  --benchmark llmrouterbench --full --confirm-download
+```
