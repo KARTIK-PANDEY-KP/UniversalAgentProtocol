@@ -1,5 +1,3 @@
-"""Pydantic protocol objects for RouterPolicy and RoutePlan contracts."""
-
 from app.protocol.feedback_event import FeedbackEvent
 from app.protocol.model_profile import ModelProfile
 from app.protocol.route_plan import RoutePlan, RoutePlanMode
