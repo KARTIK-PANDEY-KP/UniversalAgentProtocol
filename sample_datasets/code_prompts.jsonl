@@ -1,0 +1,2 @@
+{"id":"code_001","public_model":"brainbase-code","messages":[{"role":"user","content":"Debug this Python error: TypeError: 'NoneType' object is not subscriptable."}],"category":"coding","difficulty":"easy","expected_behavior":"Identify the None value source and suggest a fix."}
+{"id":"code_002","public_model":"brainbase-code","messages":[{"role":"user","content":"Write a small FastAPI endpoint that returns a health status."}],"category":"coding","difficulty":"easy","expected_behavior":"Return concise FastAPI code."}

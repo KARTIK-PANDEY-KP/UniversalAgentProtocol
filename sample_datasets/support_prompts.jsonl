@@ -1,0 +1,2 @@
+{"id":"support_001","public_model":"brainbase-fast","messages":[{"role":"user","content":"Write a concise response to a user asking why their password reset email has not arrived."}],"category":"support","difficulty":"easy","expected_behavior":"Suggest checking spam and retrying."}
+{"id":"support_002","public_model":"brainbase-chat","messages":[{"role":"user","content":"Summarize a support ticket about intermittent websocket disconnects."}],"category":"support","difficulty":"easy","expected_behavior":"Summarize the technical issue and impact."}

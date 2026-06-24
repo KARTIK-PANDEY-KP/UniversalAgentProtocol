@@ -1,0 +1,2 @@
+{"id":"agent_001","public_model":"brainbase-agent","messages":[{"role":"user","content":"Plan the next tool call to inspect failing CI logs."}],"category":"agent","difficulty":"easy","expected_behavior":"Choose a log inspection step."}
+{"id":"agent_002","public_model":"brainbase-agent","messages":[{"role":"user","content":"Given a failed database migration, decide whether to retry, rollback, or inspect schema state."}],"category":"agent","difficulty":"medium","expected_behavior":"Recommend schema inspection before action."}
