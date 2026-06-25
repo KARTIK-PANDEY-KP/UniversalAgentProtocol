@@ -19,3 +19,10 @@ def list_models(
             for model in kernel.list_public_models()
         ],
     }
+
+
+@router.get("/v1/capabilities")
+def capabilities(
+    kernel: Annotated[RuntimeKernel, Depends(runtime_kernel_dependency)],
+) -> dict[str, object]:
+    return kernel.capabilities()

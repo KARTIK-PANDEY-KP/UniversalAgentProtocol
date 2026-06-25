@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Brainbase Model Runtime</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #090b10;
+        --panel: #111722;
+        --panel-2: #151f2f;
+        --text: #edf3ff;
+        --muted: #9fb0ca;
+        --accent: #7dd3fc;
+        --ok: #86efac;
+        --warn: #fbbf24;
+        --bad: #f87171;
+        --border: #263448;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: radial-gradient(circle at top left, #13243a, var(--bg) 42%);
+        color: var(--text);
+      }
+      header {
+        padding: 32px clamp(16px, 4vw, 56px) 18px;
+        border-bottom: 1px solid var(--border);
+      }
+      h1 { margin: 0 0 8px; font-size: clamp(28px, 5vw, 52px); letter-spacing: -0.04em; }
+      h2 { margin: 0 0 14px; font-size: 20px; }
+      h3 { margin: 16px 0 8px; font-size: 14px; color: var(--accent); text-transform: uppercase; letter-spacing: .08em; }
+      p { color: var(--muted); line-height: 1.5; }
+      main {
+        display: grid;
+        grid-template-columns: minmax(300px, 480px) 1fr;
+        gap: 18px;
+        padding: 20px clamp(16px, 4vw, 56px) 56px;
+      }
+      section, .card {
+        background: rgba(17, 23, 34, .92);
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        padding: 18px;
+        box-shadow: 0 18px 60px rgba(0,0,0,.25);
+      }
+      .stack { display: flex; flex-direction: column; gap: 14px; }
+      .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+      label { display: grid; gap: 6px; color: var(--muted); font-size: 13px; }
+      input, select, textarea {
+        width: 100%;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: #0b111b;
+        color: var(--text);
+        padding: 11px 12px;
+        font: inherit;
+      }
+      textarea { min-height: 118px; resize: vertical; }
+      button {
+        border: 0;
+        border-radius: 12px;
+        padding: 11px 14px;
+        font-weight: 700;
+        color: #03121f;
+        background: linear-gradient(135deg, var(--accent), #a7f3d0);
+        cursor: pointer;
+      }
+      button.secondary { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); }
+      button:disabled { opacity: .55; cursor: wait; }
+      pre {
+        white-space: pre-wrap;
+        word-break: break-word;
+        background: #070a0f;
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 14px;
+        color: #c4d9ff;
+        min-height: 180px;
+        max-height: 620px;
+        overflow: auto;
+      }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 5px 9px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        color: var(--muted);
+        margin: 3px;
+        font-size: 12px;
+      }
+      .ok { color: var(--ok); }
+      .warn { color: var(--warn); }
+      .bad { color: var(--bad); }
+      .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+      .checkbox { display: flex; align-items: center; gap: 8px; color: var(--muted); }
+      .checkbox input { width: auto; }
+      @media (max-width: 980px) { main { grid-template-columns: 1fr; } }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Brainbase Model Runtime</h1>
+      <p>
+        OpenAI-compatible Brainbase API shell with public models, router policies, advanced runtime modes,
+        Portkey/OpenRouter execution, Supabase traces, and tool calls.
+      </p>
+      <div id="status" class="row"></div>
+    </header>
+    <main>
+      <section class="stack">
+        <h2>Request Builder</h2>
+        <div class="grid">
+          <label>Public model <select id="model"></select></label>
+          <label>Router policy override <select id="policy"></select></label>
+        </div>
+        <label>Prompt <textarea id="prompt">Reply with exactly: ok</textarea></label>
+        <div class="grid">
+          <label>Force model <select id="forceModel"></select></label>
+          <label>Shadow policy <select id="shadowPolicy"></select></label>
+        </div>
+        <div class="grid">
+          <label>Max cost USD <input id="maxCost" value="0.03" /></label>
+          <label>Max cascade depth <input id="cascadeDepth" value="3" /></label>
+        </div>
+        <div class="row">
+          <label class="checkbox"><input id="debug" type="checkbox" checked /> debug</label>
+          <label class="checkbox"><input id="testMode" type="checkbox" checked /> test mode</label>
+          <label class="checkbox"><input id="allowMulti" type="checkbox" /> allow multi-call</label>
+          <label class="checkbox"><input id="stream" type="checkbox" /> stream wrapper</label>
+          <label class="checkbox"><input id="useTool" type="checkbox" /> weather tool call</label>
+        </div>
+        <div class="row">
+          <button id="send">Send request</button>
+          <button class="secondary" data-preset="tool">Tool call preset</button>
+          <button class="secondary" data-preset="budget">Budgeted mode</button>
+          <button class="secondary" data-preset="context">Context routing</button>
+          <button class="secondary" data-preset="multi">Multi-call</button>
+        </div>
+        <h3>What this UI exposes</h3>
+        <div id="features"></div>
+      </section>
+      <section class="stack">
+        <div class="grid">
+          <div class="card">
+            <h2>Public models</h2>
+            <div id="publicModels"></div>
+          </div>
+          <div class="card">
+            <h2>Router policies</h2>
+            <div id="policies"></div>
+          </div>
+        </div>
+        <div class="card">
+          <h2>Internal model pool</h2>
+          <div id="internalModels"></div>
+        </div>
+        <div class="card">
+          <h2>Response</h2>
+          <pre id="output">Loading capabilities...</pre>
+        </div>
+      </section>
+    </main>
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const output = $("output");
+      let capabilities = null;
+
+      const weatherTool = {
+        type: "function",
+        function: {
+          name: "get_weather",
+          description: "Get weather for a city.",
+          parameters: {
+            type: "object",
+            properties: {
+              city: { type: "string", description: "City name" },
+              unit: { type: "string", enum: ["celsius", "fahrenheit"] }
+            },
+            required: ["city"]
+          }
+        }
+      };
+
+      function option(select, value, label = value) {
+        const el = document.createElement("option");
+        el.value = value;
+        el.textContent = label;
+        select.appendChild(el);
+      }
+
+      function pills(target, values, cls = "") {
+        target.innerHTML = "";
+        values.forEach((value) => {
+          const span = document.createElement("span");
+          span.className = `pill ${cls}`;
+          span.textContent = value;
+          target.appendChild(span);
+        });
+      }
+
+      async function loadCapabilities() {
+        const [health, caps] = await Promise.all([
+          fetch("/health").then((r) => r.json()),
+          fetch("/v1/capabilities").then((r) => r.json())
+        ]);
+        capabilities = caps;
+        $("status").innerHTML = `<span class="pill ok">health: ${health.status}</span><span class="pill">same-origin API</span>`;
+
+        caps.public_models.forEach((m) => option($("model"), m));
+        option($("policy"), "", "default alias policy");
+        caps.policies.forEach((p) => option($("policy"), `${p.name}:${p.version}`, `${p.name}:${p.version}`));
+        option($("shadowPolicy"), "", "none");
+        caps.policies.forEach((p) => option($("shadowPolicy"), `${p.name}:${p.version}`, `${p.name}:${p.version}`));
+        option($("forceModel"), "", "router-selected model");
+        caps.internal_models.filter((m) => m.status === "enabled").forEach((m) => option($("forceModel"), m.id, m.id));
+
+        pills($("publicModels"), caps.public_models, "ok");
+        pills($("policies"), caps.policies.map((p) => `${p.name}:${p.version}`));
+        pills($("internalModels"), caps.internal_models.map((m) => `${m.id} (${m.metadata?.tier || m.provider})`));
+        pills($("features"), Object.entries(caps.features).filter(([, v]) => v).map(([k]) => k), "ok");
+        output.textContent = JSON.stringify(caps, null, 2);
+      }
+
+      function buildPayload() {
+        const routing = {
+          debug: $("debug").checked,
+          test_mode: $("testMode").checked,
+          max_cost_usd: Number($("maxCost").value || 0.03),
+          max_cascade_depth: Number($("cascadeDepth").value || 3),
+          allow_multi_call: $("allowMulti").checked
+        };
+        if ($("policy").value) routing.policy = $("policy").value;
+        if ($("forceModel").value) routing.force_model = $("forceModel").value;
+        if ($("shadowPolicy").value) routing.shadow_policy = $("shadowPolicy").value;
+
+        const payload = {
+          model: $("model").value || "brainbase-fast",
+          messages: [{ role: "user", content: $("prompt").value }],
+          routing,
+          stream: $("stream").checked
+        };
+        if ($("useTool").checked) {
+          payload.tools = [weatherTool];
+          payload.tool_choice = { type: "function", function: { name: "get_weather" } };
+        }
+        return payload;
+      }
+
+      async function send() {
+        $("send").disabled = true;
+        output.textContent = "Sending...";
+        try {
+          const payload = buildPayload();
+          const response = await fetch("/v1/chat/completions", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+          });
+          const text = await response.text();
+          try {
+            output.textContent = JSON.stringify(JSON.parse(text), null, 2);
+          } catch {
+            output.textContent = text;
+          }
+        } catch (error) {
+          output.textContent = String(error?.stack || error);
+        } finally {
+          $("send").disabled = false;
+        }
+      }
+
+      document.querySelectorAll("[data-preset]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const preset = button.dataset.preset;
+          $("debug").checked = true;
+          $("testMode").checked = true;
+          $("stream").checked = false;
+          $("useTool").checked = false;
+          $("allowMulti").checked = false;
+          $("model").value = "brainbase-fast";
+          $("forceModel").value = "";
+          $("shadowPolicy").value = "";
+          if (preset === "tool") {
+            $("prompt").value = "Use the get_weather tool for Paris. Do not answer directly.";
+            $("useTool").checked = true;
+            $("forceModel").value = "openrouter:openai/gpt-4o-mini";
+          }
+          if (preset === "budget") {
+            $("prompt").value = "Reply with exactly: ok";
+            $("policy").value = "r2-router:v0";
+          }
+          if (preset === "context") {
+            $("prompt").value = "Use the provided context and reply with exactly: ok";
+            $("policy").value = "rcr-router:v0";
+          }
+          if (preset === "multi") {
+            $("prompt").value = "Plan, execute, and judge. Final answer should be exactly: ok";
+            $("policy").value = "router-r1:v0";
+            $("allowMulti").checked = true;
+          }
+        });
+      });
+
+      $("send").addEventListener("click", send);
+      loadCapabilities().catch((error) => {
+        output.textContent = String(error?.stack || error);
+      });
+    </script>
+  </body>
+</html>

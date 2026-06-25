@@ -42,6 +42,7 @@ class RuntimeKernel:
         trace_repository: TraceRepository | None = None,
     ) -> None:
         self._model_registry = model_registry
+        self._policy_registry = policy_registry
         self._tenant_registry = tenant_registry
         self._public_model_resolver = PublicModelResolver(tenant_registry)
         self._candidate_resolver = ModelCandidateResolver(model_registry)
@@ -89,11 +90,51 @@ class RuntimeKernel:
     def list_public_models(self) -> list[str]:
         return self._public_model_resolver.list_public_models()
 
+    def capabilities(self) -> dict[str, Any]:
+        return {
+            "public_models": self.list_public_models(),
+            "internal_models": [
+                {
+                    "id": model.id,
+                    "provider": model.provider,
+                    "status": model.status,
+                    "metadata": model.metadata,
+                    "supports": model.supports,
+                }
+                for model in self._model_registry.list_models()
+            ],
+            "policies": [
+                registration.model_dump(mode="json")
+                for registration in self._policy_registry.list_policies()
+            ],
+            "advanced_modes": [
+                "single",
+                "cascade",
+                "agent_step",
+                "multi_call",
+                "budgeted_single",
+                "context_routing",
+            ],
+            "features": {
+                "portkey_openrouter_execution": True,
+                "supabase_registry": True,
+                "supabase_traces": True,
+                "supabase_storage": True,
+                "tool_calls": True,
+                "tool_choice": True,
+                "streaming_wrapper": True,
+                "dynamic_force_model_debug": True,
+                "policy_override_debug": True,
+                "shadow_policy_debug": True,
+            },
+        }
+
     def chat_completion(self, payload: dict[str, Any]) -> dict[str, Any]:
         request = normalize_chat_request(payload)
         alias = self._public_model_resolver.resolve(request.public_model)
-        tenant_config = self._tenant_registry.tenant_config(request.tenant_id)
         routing_options = request.metadata.get("routing", {})
+        alias = self._override_alias(alias, routing_options)
+        tenant_config = self._tenant_registry.tenant_config(request.tenant_id)
         budget = self._budget_from(alias, routing_options)
         conversation_features = build_conversation_features(request.messages)
         context = RoutingContext(
@@ -140,6 +181,25 @@ class RuntimeKernel:
         )
         self._trace_repository.insert_trace(trace)
         return self._response_normalizer.normalize(request, result, plan)
+
+    def _override_alias(self, alias: PublicModelAlias, routing: object) -> PublicModelAlias:
+        if not isinstance(routing, dict):
+            return alias
+        if routing.get("debug") is not True and routing.get("test_mode") is not True:
+            return alias
+        policy_ref = routing.get("policy")
+        if not isinstance(policy_ref, str) or not policy_ref:
+            return alias
+        name, _, version = policy_ref.partition(":")
+        version = version or "v0"
+        registration = self._policy_registry.get(name, version)
+        return alias.model_copy(
+            update={
+                "policy_name": registration.name,
+                "policy_version": registration.version,
+                "config": registration.config,
+            }
+        )
 
     @property
     def trace_repository(self) -> TraceRepository:
