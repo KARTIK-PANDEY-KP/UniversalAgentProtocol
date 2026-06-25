@@ -6,6 +6,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.dependencies import runtime_kernel_dependency
+from app.executor.errors import ProviderExecutionError
 from app.registries.errors import UnknownPublicModelError
 from app.runtime.errors import RoutePlanValidationError, RuntimeErrorBase
 from app.runtime.kernel import RuntimeKernel
@@ -46,6 +47,8 @@ def chat_completions(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RoutePlanValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ProviderExecutionError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
     except RuntimeErrorBase as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
