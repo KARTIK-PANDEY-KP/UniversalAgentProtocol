@@ -7,6 +7,10 @@ from app.protocol.router_request import RouterRequest
 def normalize_chat_request(payload: dict[str, Any]) -> RouterRequest:
     metadata = dict(payload.get("metadata") or {})
     routing = payload.get("routing") or payload.get("extra_body", {}).get("routing")
+    routing = dict(routing) if isinstance(routing, dict) else {}
+    top_level_max_tokens = payload.get("max_tokens") or payload.get("max_completion_tokens")
+    if "max_tokens" not in routing and isinstance(top_level_max_tokens, int):
+        routing["max_tokens"] = top_level_max_tokens
     if isinstance(routing, dict):
         metadata["routing"] = routing
     return RouterRequest(

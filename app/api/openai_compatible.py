@@ -27,6 +27,8 @@ class ChatCompletionRequest(BaseModel):
     workflow_id: str | None = None
     step_id: str | None = None
     routing: dict[str, Any] | None = None
+    max_tokens: int | None = Field(default=None, ge=1)
+    max_completion_tokens: int | None = Field(default=None, ge=1)
     stream: bool = False
 
 
