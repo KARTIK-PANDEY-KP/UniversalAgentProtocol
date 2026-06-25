@@ -158,6 +158,7 @@ class RuntimeKernel:
                 plan = policy.plan(request, candidates, context, budget)
             except Exception:
                 plan = self._fallback_plan(request, candidates, context, budget, alias)
+        plan = self._apply_routing_generation_options(plan, routing_options)
         self._validator.validate(plan, request, candidates, alias, budget)
         shadow_plan = self._shadow_plan(
             request, alias, candidates, context, budget, routing_options
@@ -291,6 +292,19 @@ class RuntimeKernel:
         plan = policy.plan(request, candidates, context, budget)
         self._validator.validate(plan, request, candidates, shadow_alias, budget)
         return plan
+
+    @staticmethod
+    def _apply_routing_generation_options(plan: RoutePlan, routing: object) -> RoutePlan:
+        if not isinstance(routing, dict):
+            return plan
+        max_tokens = routing.get("max_tokens")
+        if not isinstance(max_tokens, int) or max_tokens <= 0:
+            return plan
+        metadata = dict(plan.metadata)
+        generation = dict(metadata.get("generation") or {})
+        generation["max_tokens"] = min(max_tokens, 4096)
+        metadata["generation"] = generation
+        return plan.model_copy(update={"metadata": metadata})
 
     @staticmethod
     def _trace_record(

@@ -37,7 +37,7 @@ class PortkeyExecutor:
         payload: dict[str, Any] = {
             "model": model.executor_model,
             "messages": messages,
-            "max_tokens": max_tokens or 64,
+            "max_tokens": max_tokens or 512,
         }
         if tools is not None:
             payload["tools"] = tools

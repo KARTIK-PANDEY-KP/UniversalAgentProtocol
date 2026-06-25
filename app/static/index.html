@@ -125,6 +125,7 @@
         </div>
         <div class="grid">
           <label>Max cost USD <input id="maxCost" value="0.03" /></label>
+          <label>Max output tokens <input id="maxTokens" value="1024" /></label>
           <label>Max cascade depth <input id="cascadeDepth" value="3" /></label>
         </div>
         <div class="row">
@@ -221,7 +222,8 @@
 
         pills($("publicModels"), caps.public_models, "ok");
         pills($("policies"), caps.policies.map((p) => `${p.name}:${p.version}`));
-        pills($("internalModels"), caps.internal_models.map((m) => `${m.id} (${m.metadata?.tier || m.provider})`));
+        const enabledModels = caps.internal_models.filter((m) => m.status === "enabled");
+        pills($("internalModels"), enabledModels.map((m) => `${m.id} (${m.metadata?.tier || m.provider})`));
         pills($("features"), Object.entries(caps.features).filter(([, v]) => v).map(([k]) => k), "ok");
         output.textContent = JSON.stringify(caps, null, 2);
       }
@@ -231,6 +233,7 @@
           debug: $("debug").checked,
           test_mode: $("testMode").checked,
           max_cost_usd: Number($("maxCost").value || 0.03),
+          max_tokens: Number($("maxTokens").value || 1024),
           max_cascade_depth: Number($("cascadeDepth").value || 3),
           allow_multi_call: $("allowMulti").checked
         };

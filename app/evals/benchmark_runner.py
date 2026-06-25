@@ -70,6 +70,7 @@ class BenchmarkRunner:
                         policy_name=policy_name,
                         executor=executor,
                         dry_run=dry_run,
+                        real_executor=settings.executor_mode == "portkey",
                     )
                     results.append(result)
                     if max_cost_usd is not None:
@@ -85,6 +86,7 @@ class BenchmarkRunner:
         policy_name: str,
         executor: Any,
         dry_run: bool,
+        real_executor: bool,
     ) -> dict[str, Any]:
         alias = self._tenant_registry.resolve_public_model(str(row["public_model"]))
         benchmark_alias = self._alias_for_policy(alias, policy_name)
@@ -103,6 +105,8 @@ class BenchmarkRunner:
         )
         context = RoutingContext(public_model_config=benchmark_alias.model_dump(mode="json"))
         plan = policy.plan(request, candidates, context, budget)
+        if not dry_run and real_executor:
+            plan = self._with_generation_cap(plan, 64)
         self._validator.validate(plan, request, candidates, benchmark_alias, budget)
         selected_model = plan.selected_model or plan.steps[0].model
         model = self._model_registry.get(selected_model)
@@ -127,3 +131,11 @@ class BenchmarkRunner:
     @staticmethod
     def _alias_for_policy(alias: PublicModelAlias, policy_name: str) -> PublicModelAlias:
         return alias.model_copy(update={"policy_name": policy_name, "policy_version": "v0"})
+
+    @staticmethod
+    def _with_generation_cap(plan: Any, max_tokens: int) -> Any:
+        metadata = dict(plan.metadata)
+        generation = dict(metadata.get("generation") or {})
+        generation["max_tokens"] = max_tokens
+        metadata["generation"] = generation
+        return plan.model_copy(update={"metadata": metadata})
