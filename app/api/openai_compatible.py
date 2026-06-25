@@ -19,6 +19,7 @@ class ChatCompletionRequest(BaseModel):
     model: str
     messages: list[dict[str, Any]] = Field(min_length=1)
     tools: list[dict[str, Any]] | None = None
+    tool_choice: str | dict[str, Any] | None = None
     response_format: dict[str, Any] | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
     tenant_id: str | None = None
@@ -28,7 +29,7 @@ class ChatCompletionRequest(BaseModel):
     stream: bool = False
 
 
-@router.post("/chat/completions")
+@router.post("/chat/completions", response_model=None)
 def chat_completions(
     request: ChatCompletionRequest,
     kernel: Annotated[RuntimeKernel, Depends(runtime_kernel_dependency)],

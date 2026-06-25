@@ -20,10 +20,11 @@ class FallbackExecutor:
         plan: RoutePlan,
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None = None,
+        tool_choice: str | dict[str, Any] | None = None,
         response_format: dict[str, Any] | None = None,
     ) -> ExecutionResult:
         if plan.mode == "multi_call":
-            return self._execute_multi_call(plan, messages, tools, response_format)
+            return self._execute_multi_call(plan, messages, tools, tool_choice, response_format)
         if plan.mode == "context_routing":
             messages = self._context_messages(plan, messages)
         model_ids = self._execution_model_ids(plan)
@@ -36,6 +37,7 @@ class FallbackExecutor:
                     self._model_lookup(model_id),
                     messages,
                     tools=tools,
+                    tool_choice=tool_choice,
                     response_format=response_format,
                     max_tokens=max_tokens,
                 )
@@ -88,6 +90,7 @@ class FallbackExecutor:
         plan: RoutePlan,
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None,
+        tool_choice: str | dict[str, Any] | None,
         response_format: dict[str, Any] | None,
     ) -> ExecutionResult:
         step_results: list[dict[str, Any]] = []
@@ -101,6 +104,7 @@ class FallbackExecutor:
                 self._model_lookup(step.model),
                 step_messages,
                 tools=tools,
+                tool_choice=tool_choice,
                 response_format=response_format,
                 max_tokens=step.max_tokens or self._max_tokens_for(plan, step.model),
             )

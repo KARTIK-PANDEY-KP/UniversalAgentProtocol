@@ -14,6 +14,7 @@ def normalize_chat_request(payload: dict[str, Any]) -> RouterRequest:
         public_model=str(payload["model"]),
         messages=payload["messages"],
         tools=payload.get("tools"),
+        tool_choice=payload.get("tool_choice"),
         response_format=payload.get("response_format"),
         modality=str(payload.get("modality", "text")),
         tenant_id=payload.get("tenant_id"),

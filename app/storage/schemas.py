@@ -15,6 +15,7 @@ class TraceRecord(BaseModel):
     fallback_used: bool = False
     request_messages: list[dict[str, Any]] = Field(default_factory=list)
     request_tools: list[dict[str, Any]] | None = None
+    request_tool_choice: str | dict[str, Any] | None = None
     response_format: dict[str, Any] | None = None
     routing_budget: dict[str, Any] = Field(default_factory=dict)
     routing_context: dict[str, Any] = Field(default_factory=dict)

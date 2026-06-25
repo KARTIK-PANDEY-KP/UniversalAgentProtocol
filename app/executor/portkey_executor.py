@@ -30,6 +30,7 @@ class PortkeyExecutor:
         model: ModelProfile,
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None = None,
+        tool_choice: str | dict[str, Any] | None = None,
         response_format: dict[str, Any] | None = None,
         max_tokens: int | None = None,
     ) -> ExecutionResult:
@@ -40,6 +41,8 @@ class PortkeyExecutor:
         }
         if tools is not None:
             payload["tools"] = tools
+        if tool_choice is not None:
+            payload["tool_choice"] = tool_choice
         if response_format is not None:
             payload["response_format"] = response_format
 

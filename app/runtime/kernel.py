@@ -125,6 +125,7 @@ class RuntimeKernel:
             plan,
             request.messages,
             tools=request.tools,
+            tool_choice=request.tool_choice,
             response_format=request.response_format,
         )
         trace = self._trace_record(
@@ -255,6 +256,7 @@ class RuntimeKernel:
             fallback_used=result.fallback_used,
             request_messages=request.messages,
             request_tools=request.tools,
+            request_tool_choice=request.tool_choice,
             response_format=request.response_format,
             routing_budget=budget.model_dump(mode="json"),
             routing_context=context.model_dump(mode="json"),

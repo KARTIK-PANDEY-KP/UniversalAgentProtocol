@@ -8,6 +8,7 @@ class RouterRequest(BaseModel):
     public_model: str = Field(min_length=1)
     messages: list[dict[str, Any]] = Field(min_length=1)
     tools: list[dict[str, Any]] | None = None
+    tool_choice: str | dict[str, Any] | None = None
     response_format: dict[str, Any] | None = None
     modality: str = "text"
     tenant_id: str | None = None
