@@ -184,6 +184,45 @@ describe("tool federation", () => {
     await client.close();
   });
 
+  it("hands back resource links the client can actually read", async () => {
+    // A tool that answers with a link is inviting a read, and the only door
+    // the client has is the gateway. An upstream URI names a door it cannot
+    // reach.
+    const gateway = await newGateway();
+    const server = await openMcpServer({
+      tools: [
+        {
+          name: "find",
+          handler: () => ({
+            content: [
+              { type: "text", text: "found one" },
+              { type: "resource_link", uri: "file:///notes.md", name: "notes" },
+              {
+                type: "resource",
+                resource: { uri: "file:///notes.md", text: "the notes" },
+              },
+            ] as JsonObject[],
+          }),
+        },
+      ],
+      resources: [{ uri: "file:///notes.md", name: "notes", text: "the notes" }],
+    });
+    await gateway.createConnection(server.url, { alias: "up" });
+
+    const client = await connectedClient(gateway);
+    const result = await client.callTool("up.find");
+    const content = result["content"] as JsonObject[];
+    const link = content.find((block) => block["type"] === "resource_link");
+    const embedded = content.find((block) => block["type"] === "resource");
+    expect(link?.["uri"]).toBe("up+file:///notes.md");
+    expect((embedded?.["resource"] as JsonObject)["uri"]).toBe("up+file:///notes.md");
+
+    // The point of rewriting it: the link works.
+    const read = await client.readResource(String(link?.["uri"]));
+    expect((read["contents"] as JsonObject[])[0]?.["uri"]).toBe("up+file:///notes.md");
+    await client.close();
+  });
+
   it("separates a bad argument from a refusal in the code it answers with", async () => {
     // The protocol treats these differently and so must the gateway: a client
     // retries an argument it can fix, and gives up on a call policy will never

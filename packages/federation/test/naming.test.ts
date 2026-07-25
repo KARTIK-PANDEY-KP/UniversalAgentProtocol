@@ -5,6 +5,7 @@ import {
   defaultAliasFor,
   gatewayToolName,
   isValidAlias,
+  namespaceResultResources,
   sanitizeAlias,
 } from "@umg/federation";
 
@@ -53,5 +54,65 @@ describe("tool naming", () => {
     const second = gatewayToolName("up", `${long}b`, taken);
     expect(first).not.toBe(second);
     for (const name of [first, second]) expect(name.length).toBeLessThanOrEqual(128);
+  });
+});
+
+describe("resource uris inside results", () => {
+  it("rewrites a resource link so the client can read what it points at", () => {
+    const result = namespaceResultResources(
+      {
+        content: [
+          { type: "text", text: "see also" },
+          { type: "resource_link", uri: "demo://thing/1", name: "thing" },
+        ],
+      },
+      "up",
+    );
+    const link = (result["content"] as Record<string, unknown>[])[1];
+    expect(link?.["uri"]).toBe("up+demo://thing/1");
+  });
+
+  it("rewrites embedded resources and the contents of a read", () => {
+    const embedded = namespaceResultResources(
+      { content: [{ type: "resource", resource: { uri: "file:///a.txt", text: "a" } }] },
+      "up",
+    );
+    const block = (embedded["content"] as Record<string, unknown>[])[0];
+    expect((block?.["resource"] as Record<string, unknown>)["uri"]).toBe("up+file:///a.txt");
+
+    const read = namespaceResultResources(
+      { contents: [{ uri: "file:///a.txt", text: "a" }] },
+      "up",
+    );
+    expect((read["contents"] as Record<string, unknown>[])[0]?.["uri"]).toBe("up+file:///a.txt");
+  });
+
+  it("rewrites a resource carried by a prompt message", () => {
+    const result = namespaceResultResources(
+      {
+        messages: [
+          {
+            role: "user",
+            content: { type: "resource", resource: { uri: "file:///a.txt", text: "a" } },
+          },
+        ],
+      },
+      "up",
+    );
+    const message = (result["messages"] as Record<string, unknown>[])[0];
+    const content = message?.["content"] as Record<string, unknown>;
+    expect((content["resource"] as Record<string, unknown>)["uri"]).toBe("up+file:///a.txt");
+  });
+
+  it("leaves a uri that is the tool's own data alone", () => {
+    // A tool that answers with a record containing a uri field is reporting
+    // data, not offering a resource to read.
+    const result = namespaceResultResources(
+      { content: [{ type: "text", text: "ok" }], structuredContent: { uri: "https://x.test/a" } },
+      "up",
+    );
+    expect((result["structuredContent"] as Record<string, unknown>)["uri"]).toBe(
+      "https://x.test/a",
+    );
   });
 });
