@@ -1,0 +1,48 @@
+# Who reviews what.
+#
+# Ownership does not mean only the owner may change a directory. It means
+# someone is accountable for that module staying coherent, reviews are routed
+# without anyone having to guess, and an architectural change cannot happen
+# invisibly. Every module in ARCHITECTURE.md appears here; a directory with no
+# owner is a directory that decays.
+#
+# The team names below are placeholders for a single-maintainer repository.
+# Replace them with real GitHub teams before enabling required review.
+
+# Fallback: anything not claimed below.
+*                               @platform
+
+# The shared kernel. Everything imports it, so changes here reach everywhere
+# and are reviewed by the people who own the consequences.
+/packages/core/                 @platform
+
+# Infrastructure primitives.
+/packages/observability/        @platform
+/packages/security/             @platform @identity
+/packages/storage/              @platform
+
+# Protocol adapters.
+/packages/oauth/                @identity
+/packages/mcp-client/           @protocol
+/packages/mcp-server/           @protocol
+
+# The business capability.
+/packages/federation/           @federation
+
+# Composition and deployables.
+/packages/gateway/              @platform
+/apps/                          @platform
+
+# Tests.
+/conformance/                   @platform
+/conformance/tests/security.test.ts     @platform @identity
+
+# The architecture itself. A change to the policy changes what CI permits, so
+# it is reviewed alongside the decision record that justifies it.
+/ARCHITECTURE.md                @platform
+/CONTRIBUTING.md                @platform
+/CODEOWNERS                     @platform
+/tooling/architecture/          @platform
+/docs/architecture/             @platform
+/docs/decisions/                @platform
+/.github/workflows/             @platform
