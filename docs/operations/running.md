@@ -47,6 +47,30 @@ what matters when you deploy.
 - Downstream authentication moved from shared API keys to the gateway's own
   OAuth resource, so each application has an attributable identity.
 
+## Render
+
+[render.yaml](../../render.yaml) describes a single web service. `HOST` already
+defaults to `0.0.0.0` and the port is read from `PORT`, so nothing about the
+bind address needs changing.
+
+Two items on the checklist above cannot be met on the free plan, and both are
+worth understanding before pointing anything real at such a deployment.
+
+Durable storage is the first. Free instances have no disk and an ephemeral
+filesystem, so the SQLite file goes with the container on every deploy,
+restart, and the spin-down that follows fifteen idle minutes. Losing it means
+losing the OAuth grants, so each upstream has to be authorized again by hand.
+A disk needs a paid instance type; attach one and point
+`GATEWAY_DATABASE_FILE` at its mount path.
+
+The second is the background worker, which Render does not offer on free
+either. Nothing breaks: the token manager refreshes an expired token on the
+call that needs it, so a missing worker costs latency on the first call after
+an expiry rather than correctness. What is lost is the periodic work that has
+no request to hang off — catalogue resync, session reaping and key rewrap. Run
+`node apps/background-worker/dist/main.js --once` from a cron job to get them
+back.
+
 ## Endpoints
 
 **Public.** `GET /healthz`, `GET /metrics`,
