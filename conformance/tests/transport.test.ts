@@ -303,6 +303,94 @@ describe("MCP transport", () => {
     await client.close();
   });
 
+  it("reopens the upstream notification stream after it drops", async () => {
+    const upstream = await startProtectedUpstream({
+      authorizationServer: { supportsDcr: true },
+      mcpServer: { stateful: true, tools: [{ name: "ping" }] },
+    });
+    started.push(upstream);
+    const gateway = await newGateway();
+    await connectUpstream(gateway, upstream.url, { alias: "up" });
+
+    const client = await connectedClient(gateway);
+    await client.callTool("up.ping");
+    await waitFor(() => upstream.mcpServer.stats.serverStreamOpens >= 1);
+    const opensBefore = upstream.mcpServer.stats.serverStreamOpens;
+
+    // A proxy timing out an idle connection looks exactly like this from the
+    // client, and a stream that never comes back means notifications stop
+    // arriving with nothing to say so.
+    upstream.mcpServer.dropServerStreams();
+    await waitFor(
+      () => upstream.mcpServer.stats.serverStreamOpens > opensBefore,
+      4_000,
+    );
+
+    // The tools the upstream adds after the drop still reach the catalogue.
+    upstream.mcpServer.setTools([{ name: "ping" }, { name: "pong" }]);
+    await waitFor(async () =>
+      (await client.listTools()).some((tool) => tool.name === "up.pong"),
+    );
+    await client.close();
+  });
+
+  it("asks the upstream to resume from the last event it delivered", async () => {
+    const upstream = await startProtectedUpstream({
+      authorizationServer: { supportsDcr: true },
+      mcpServer: { stateful: true, tools: [{ name: "ping" }] },
+    });
+    started.push(upstream);
+    const gateway = await newGateway();
+    await connectUpstream(gateway, upstream.url, { alias: "up" });
+
+    const client = await connectedClient(gateway);
+    await client.callTool("up.ping");
+    await waitFor(() => upstream.mcpServer.stats.serverStreamOpens >= 1);
+
+    // Give the stream something to have delivered, then take it away.
+    upstream.mcpServer.setTools([{ name: "ping" }, { name: "pong" }]);
+    await waitFor(async () =>
+      (await client.listTools()).some((tool) => tool.name === "up.pong"),
+    );
+    const opensBefore = upstream.mcpServer.stats.serverStreamOpens;
+    upstream.mcpServer.dropServerStreams();
+    await waitFor(
+      () => upstream.mcpServer.stats.serverStreamOpens > opensBefore,
+      4_000,
+    );
+
+    const [first] = upstream.mcpServer.stats.resumedFrom;
+    const last = upstream.mcpServer.stats.resumedFrom.at(-1);
+    expect(first).toBeNull();
+    expect(last).toMatch(/^\d+$/u);
+    await client.close();
+  });
+
+  it("opens one upstream session however many calls arrive at once", async () => {
+    const upstream = await startProtectedUpstream({
+      authorizationServer: { supportsDcr: true },
+      mcpServer: { stateful: true, tools: [{ name: "ping" }] },
+    });
+    started.push(upstream);
+    const gateway = await newGateway();
+    await connectUpstream(gateway, upstream.url, { alias: "up" });
+
+    const initializesAfterConnect = upstream.mcpServer.stats.initializes;
+    const sessionsAfterConnect = upstream.mcpServer.sessionCount;
+
+    const client = await connectedClient(gateway);
+    const results = await Promise.all(
+      Array.from({ length: 12 }, () => client.callTool("up.ping")),
+    );
+    expect(results).toHaveLength(12);
+
+    // Twelve callers racing to be the first through an unopened connection
+    // must not each build a session the others then abandon.
+    expect(upstream.mcpServer.stats.initializes - initializesAfterConnect).toBe(1);
+    expect(upstream.mcpServer.sessionCount - sessionsAfterConnect).toBe(1);
+    await client.close();
+  });
+
   it("serves an MCP server that needs no authorization at all", async () => {
     const open = new MockMcpServer({
       requireAuth: false,
@@ -317,6 +405,19 @@ describe("MCP transport", () => {
     expect(connection.tool_count).toBe(1);
   });
 });
+
+/** Polls until the condition holds, so a test never sleeps a fixed guess. */
+async function waitFor(
+  condition: () => boolean | Promise<boolean>,
+  timeoutMs = 2_000,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    if (await condition()) return;
+    if (Date.now() >= deadline) throw new Error("Timed out waiting for a condition");
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+}
 
 async function connectedClient(gateway: GatewayFixture): Promise<GatewayMcpClient> {
   const client = new GatewayMcpClient({
