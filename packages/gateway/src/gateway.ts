@@ -242,6 +242,7 @@ export class Gateway {
       tokenManager,
       toolCallLimiter,
       apiLimiter,
+      pageSize: config.pageSize,
       policy,
       audit,
       clock,

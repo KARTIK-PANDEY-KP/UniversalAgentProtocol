@@ -47,6 +47,8 @@ export interface GatewayConfig {
   maxResultBytes: number;
   allowSampling: boolean;
   allowElicitation: boolean;
+  /** Entries per page of `tools/list` and the other catalogue listings. */
+  pageSize: number;
   /** Tool calls a tenant may make per minute; 0 disables the limit. */
   toolCallsPerMinute: number;
   /** Control-plane requests a tenant may make per minute; 0 disables the limit. */
@@ -74,6 +76,7 @@ const DEFAULTS = {
   confirmationRiskLevels: "DESTRUCTIVE,FINANCIAL",
   maxArgumentBytes: 256 * 1024,
   maxResultBytes: 4 * 1024 * 1024,
+  pageSize: 100,
 };
 
 function parseList(value: string | undefined): string[] {
@@ -157,6 +160,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): GatewayConfig 
     maxResultBytes: Number(env["GATEWAY_MAX_RESULT_BYTES"] ?? DEFAULTS.maxResultBytes),
     allowSampling: parseBool(env["GATEWAY_ALLOW_SAMPLING"], true),
     allowElicitation: parseBool(env["GATEWAY_ALLOW_ELICITATION"], true),
+    pageSize: Number(env["GATEWAY_PAGE_SIZE"] ?? DEFAULTS.pageSize),
     toolCallsPerMinute: Number(
       env["GATEWAY_TOOL_CALLS_PER_MINUTE"] ?? DEFAULTS.toolCallsPerMinute,
     ),

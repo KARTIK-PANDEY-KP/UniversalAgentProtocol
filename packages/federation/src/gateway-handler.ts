@@ -33,6 +33,7 @@ import type { GatewayStore } from "@umg/storage";
 import type { AuditService } from "./audit.js";
 import type { CatalogueChange } from "./connection-service.js";
 import { splitPromptName, splitResourceUri } from "./naming.js";
+import { paginate, type Page } from "./pagination.js";
 import type { PolicyEngine } from "./policy-engine.js";
 import type { UpstreamMessageContext, UpstreamSessionManager } from "./upstream-sessions.js";
 
@@ -51,6 +52,8 @@ export interface GatewayHandlerDeps {
   metrics: MetricsRegistry;
   serverInfo: McpImplementation;
   instructions?: string;
+  /** Entries per page of `tools/list` and friends. */
+  pageSize?: number;
   /** Resolves a live downstream session so upstream messages can be routed back. */
   lookupSession(sessionId: string): DownstreamSessionHandle | undefined;
   /** All live sessions for a tenant, used for list-changed fan-out. */
@@ -62,6 +65,21 @@ const LIST_CHANGED_METHODS = new Set<string>([
   McpMethod.ResourceListChanged,
   McpMethod.PromptListChanged,
 ]);
+
+/** Large enough that most workspaces never paginate, small enough to stream. */
+const DEFAULT_PAGE_SIZE = 100;
+
+/** Shapes a page as the MCP list result the method expects. */
+function page<T>(
+  field: string,
+  result: Page<T>,
+  map: (item: T) => JsonObject = (item) => item as JsonObject,
+): JsonObject {
+  return {
+    [field]: result.items.map(map),
+    ...(result.nextCursor === undefined ? {} : { nextCursor: result.nextCursor }),
+  };
+}
 
 /**
  * Implements the MCP surface the gateway presents to Cursor, Claude Code,
@@ -79,7 +97,11 @@ export class GatewayMcpHandler implements McpServerHandler {
     (notification: JsonRpcNotification) => void
   >();
 
-  constructor(private readonly deps: GatewayHandlerDeps) {}
+  private readonly pageSize: number;
+
+  constructor(private readonly deps: GatewayHandlerDeps) {
+    this.pageSize = deps.pageSize ?? DEFAULT_PAGE_SIZE;
+  }
 
   async onInitialize(
     params: McpInitializeParams,
@@ -132,13 +154,38 @@ export class GatewayMcpHandler implements McpServerHandler {
       case McpMethod.Ping:
         return {};
       case McpMethod.ToolsList:
-        return { tools: (await this.listTools(session)).map(toJsonObject) };
+        return page(
+          "tools",
+          paginate(
+            await this.listTools(session),
+            (tool) => tool.name,
+            params["cursor"],
+            this.pageSize,
+          ),
+          toJsonObject,
+        );
       case McpMethod.ToolsCall:
         return this.callTool(params, session, context);
       case McpMethod.ResourcesList:
-        return { resources: await this.listResources(session, false) };
+        return page(
+          "resources",
+          paginate(
+            await this.listResources(session, false),
+            (resource) => String(resource["uri"]),
+            params["cursor"],
+            this.pageSize,
+          ),
+        );
       case McpMethod.ResourcesTemplatesList:
-        return { resourceTemplates: await this.listResources(session, true) };
+        return page(
+          "resourceTemplates",
+          paginate(
+            await this.listResources(session, true),
+            (template) => String(template["uriTemplate"]),
+            params["cursor"],
+            this.pageSize,
+          ),
+        );
       case McpMethod.ResourcesRead:
         return this.readResource(params, session);
       case McpMethod.ResourcesSubscribe:
@@ -146,7 +193,15 @@ export class GatewayMcpHandler implements McpServerHandler {
       case McpMethod.ResourcesUnsubscribe:
         return this.resourceSubscription(params, session, false);
       case McpMethod.PromptsList:
-        return { prompts: await this.listPrompts(session) };
+        return page(
+          "prompts",
+          paginate(
+            await this.listPrompts(session),
+            (prompt) => String(prompt["name"]),
+            params["cursor"],
+            this.pageSize,
+          ),
+        );
       case McpMethod.PromptsGet:
         return this.getPrompt(params, session);
       case McpMethod.LoggingSetLevel:

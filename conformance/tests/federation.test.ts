@@ -561,6 +561,62 @@ describe("tool federation", () => {
     await client.close();
   });
 
+  it("hands out a big catalogue one page at a time", async () => {
+    const gateway = await newGateway({ config: { pageSize: 3 } });
+    const server = await openMcpServer({
+      tools: Array.from({ length: 7 }, (_, index) => ({
+        name: `tool_${String(index).padStart(2, "0")}`,
+      })),
+      resources: Array.from({ length: 4 }, (_, index) => ({
+        uri: `file:///doc-${index}.md`,
+        name: `doc-${index}`,
+        text: "body",
+      })),
+      prompts: Array.from({ length: 4 }, (_, index) => ({
+        name: `prompt_${index}`,
+        messages: [{ role: "user", content: { type: "text", text: "hi" } }],
+      })),
+    });
+    await gateway.createConnection(server.url, { alias: "up" });
+
+    const client = await connectedClient(gateway);
+    const first = await client.request(McpMethod.ToolsList, {});
+    expect(first["tools"]).toHaveLength(3);
+    expect(typeof first["nextCursor"]).toBe("string");
+
+    const second = await client.request(McpMethod.ToolsList, {
+      cursor: first["nextCursor"] as string,
+    });
+    expect(second["tools"]).toHaveLength(3);
+
+    const third = await client.request(McpMethod.ToolsList, {
+      cursor: second["nextCursor"] as string,
+    });
+    expect(third["tools"]).toHaveLength(1);
+    // The last page says so by leaving the cursor out entirely.
+    expect(third["nextCursor"]).toBeUndefined();
+
+    // Following the cursors yields every tool exactly once, in order.
+    expect((await client.listTools()).map((tool) => tool.name)).toEqual(
+      Array.from({ length: 7 }, (_, index) => `up.tool_${String(index).padStart(2, "0")}`),
+    );
+    expect(await client.listResources()).toHaveLength(4);
+    expect(await client.listPrompts()).toHaveLength(4);
+    await client.close();
+  });
+
+  it("refuses a cursor it never issued", async () => {
+    const gateway = await newGateway();
+    const server = await openMcpServer({ tools: [{ name: "ping" }] });
+    await gateway.createConnection(server.url, { alias: "up" });
+
+    const client = await connectedClient(gateway);
+    await expect(
+      client.request(McpMethod.ToolsList, { cursor: "not a cursor!!" }),
+    ).rejects.toThrow(/cursor/u);
+    await client.close();
+  });
+
   it("does not create a second connection for the same MCP url", async () => {
     const gateway = await newGateway();
     const server = await openMcpServer({ tools: [{ name: "ping" }] });

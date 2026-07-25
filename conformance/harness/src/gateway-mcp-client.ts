@@ -129,13 +129,11 @@ export class GatewayMcpClient {
   }
 
   async listTools(): Promise<McpTool[]> {
-    const result = await this.request(McpMethod.ToolsList, {});
-    return (result["tools"] ?? []) as unknown as McpTool[];
+    return (await this.drain(McpMethod.ToolsList, "tools")) as unknown as McpTool[];
   }
 
   async listPrompts(): Promise<JsonObject[]> {
-    const result = await this.request(McpMethod.PromptsList, {});
-    return (result["prompts"] ?? []) as JsonObject[];
+    return this.drain(McpMethod.PromptsList, "prompts");
   }
 
   async getPrompt(name: string, args: JsonObject = {}): Promise<JsonObject> {
@@ -143,8 +141,23 @@ export class GatewayMcpClient {
   }
 
   async listResources(): Promise<JsonObject[]> {
-    const result = await this.request(McpMethod.ResourcesList, {});
-    return (result["resources"] ?? []) as JsonObject[];
+    return this.drain(McpMethod.ResourcesList, "resources");
+  }
+
+  /** Follows `nextCursor` the way a conforming client does. */
+  private async drain(method: string, field: string): Promise<JsonObject[]> {
+    const items: JsonObject[] = [];
+    let cursor: string | undefined;
+    do {
+      const result = await this.request(
+        method,
+        cursor === undefined ? {} : { cursor },
+      );
+      items.push(...((result[field] ?? []) as JsonObject[]));
+      const next = result["nextCursor"];
+      cursor = typeof next === "string" ? next : undefined;
+    } while (cursor !== undefined);
+    return items;
   }
 
   async readResource(uri: string): Promise<JsonObject> {
