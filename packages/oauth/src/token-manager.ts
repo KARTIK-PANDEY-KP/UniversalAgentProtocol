@@ -35,7 +35,10 @@ import {
 } from "./dpop.js";
 import { createPkcePair } from "./pkce.js";
 import { classifyTokenFailure, OAuthProtocolError } from "./protocol-error.js";
-import type { ResolvedClientRegistration } from "./registration.js";
+import type {
+  RegistrationSelector,
+  ResolvedClientRegistration,
+} from "./registration.js";
 import type {
   ClientCredentials,
   NormalizedTokenSet,
@@ -70,6 +73,8 @@ export interface TokenManagerDeps {
   logger: Logger;
   metrics: MetricsRegistry;
   config: TokenManagerConfig;
+  /** Used to take a new client when a server disowns the one it issued. */
+  registrations: RegistrationSelector;
 }
 
 export interface AuthorizationTransactionRequest {
@@ -241,16 +246,34 @@ export class OAuthTokenManager {
 
     let tokens: NormalizedTokenSet;
     try {
-      tokens = await this.deps.tokenClient.exchangeCode({
-        metadata,
-        credentials,
-        code: callback.code,
-        codeVerifier: verifier,
-        redirectUri: transaction.redirectUri,
-        resource: transaction.resource,
-        dpopKey: await this.dpopKeyFor(connection),
-      });
+      try {
+        tokens = await this.deps.tokenClient.exchangeCode({
+          metadata,
+          credentials,
+          code: callback.code,
+          codeVerifier: verifier,
+          redirectUri: transaction.redirectUri,
+          resource: transaction.resource,
+          dpopKey: await this.dpopKeyFor(connection),
+        });
+      } catch (error) {
+        // A server that accepts our registration and then refuses the client it
+        // just issued has told us its advertised authentication method does not
+        // work here. Taking a different client is the only way forward, and the
+        // code cannot come with us because it was issued to the old one, so the
+        // user goes back through authorization once with a client that works
+        // rather than being stuck on a connection that never will.
+        const replaced = await this.reregisterAfterRejection(connection, credentials, error);
+        if (!replaced) throw error;
+        throw new GatewayError(
+          "AUTHORIZATION_REQUIRED",
+          "This server would not accept the client it issued us. " +
+            "A new one is registered; authorize once more to finish connecting.",
+          { data: { connectionId: connection.id, reason: "client_replaced" }, cause: error },
+        );
+      }
     } catch (error) {
+      if (error instanceof GatewayError && error.code === "AUTHORIZATION_REQUIRED") throw error;
       this.deps.metrics.counter(Metric.OauthAuthorizationFailed, {
         reason: error instanceof OAuthProtocolError ? error.error : "exchange_failed",
       });
@@ -718,6 +741,60 @@ export class OAuthTokenManager {
       credentials: this.buildCredentials(registration.clientId, clientSecret, registration.tokenEndpointAuthMethod),
       resource: server?.canonicalResource ?? null,
     };
+  }
+
+  /**
+   * Takes a fresh client from a server that rejected the one it gave us,
+   * avoiding the authentication method it would not honour. False when the
+   * failure was not about our client, or when nothing can be done about it.
+   */
+  private async reregisterAfterRejection(
+    connection: UpstreamConnection,
+    used: ClientCredentials,
+    error: unknown,
+  ): Promise<boolean> {
+    if (!(error instanceof OAuthProtocolError) || error.error !== "invalid_client") {
+      return false;
+    }
+    if (!connection.oauthIssuerId || !connection.oauthClientRegistrationId) return false;
+    const [issuer, registration] = await Promise.all([
+      this.deps.store.issuers.get(connection.oauthIssuerId),
+      this.deps.store.registrations.get(connection.oauthClientRegistrationId),
+    ]);
+    if (!issuer || !registration || registration.registrationType !== "DYNAMIC") return false;
+
+    const replacement = await this.deps.registrations
+      .reregister(
+        {
+          tenantId: connection.tenantId,
+          issuerRecord: issuer,
+          metadata: issuer.metadataJson as unknown as AuthorizationServerMetadata,
+          redirectUri: this.deps.config.identity.redirectUri,
+          requestedScopes: connection.requestedScopes,
+          avoidAuthMethods: [used.tokenEndpointAuthMethod],
+        },
+        registration.id,
+      )
+      .catch((reason: unknown) => {
+        this.deps.logger.warn("Could not replace a rejected OAuth client", {
+          connectionId: connection.id,
+          issuer: issuer.issuer,
+          reason: reason instanceof Error ? reason.message : String(reason),
+        });
+        return null;
+      });
+    if (!replacement) return false;
+
+    await this.deps.store.connections.update(connection.id, {
+      oauthClientRegistrationId: replacement.registrationId,
+    });
+    this.deps.logger.info("Replaced an OAuth client the server would not authenticate", {
+      connectionId: connection.id,
+      issuer: issuer.issuer,
+      rejectedMethod: used.tokenEndpointAuthMethod,
+      replacementMethod: replacement.tokenEndpointAuthMethod,
+    });
+    return true;
   }
 
   private async credentialsFor(

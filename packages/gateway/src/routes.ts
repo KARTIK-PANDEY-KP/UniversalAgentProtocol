@@ -1,6 +1,12 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { isTokenEndpointAuthMethod, newId, toGatewayError } from "@umg/core";
+import {
+  isRecord,
+  isTokenEndpointAuthMethod,
+  newId,
+  toGatewayError,
+  type GatewayError,
+} from "@umg/core";
 import {
   bearerChallengeHeader,
   readBody,
@@ -165,6 +171,15 @@ export function registerRoutes(
       );
     } catch (cause) {
       const gatewayError = toGatewayError(cause);
+      // The gateway had to swap the client mid-flow, which orphans the code the
+      // server just issued. Sending the user straight back through is the
+      // difference between one extra hop and a connection they cannot finish.
+      const retryId = replacedClientConnectionId(gatewayError);
+      if (retryId) {
+        res.writeHead(302, { location: `${config.baseUrl}/connect/${retryId}` });
+        res.end();
+        return;
+      }
       sendHtml(
         res,
         gatewayError.httpStatus,
@@ -522,6 +537,18 @@ async function readOptionalBody(req: IncomingMessage): Promise<Record<string, un
   const raw = await readBody(req, MAX_BODY);
   if (raw.trim() === "") return {};
   return parseJsonBody(raw);
+}
+
+/**
+ * The connection to send back through authorization after the gateway had to
+ * register a replacement client, or null when the failure was something else.
+ */
+function replacedClientConnectionId(error: GatewayError): string | null {
+  if (error.code !== "AUTHORIZATION_REQUIRED") return null;
+  const data = error.data;
+  if (!isRecord(data) || data["reason"] !== "client_replaced") return null;
+  const id = data["connectionId"];
+  return typeof id === "string" ? id : null;
 }
 
 function isStringRecord(value: unknown): value is Record<string, string> {
