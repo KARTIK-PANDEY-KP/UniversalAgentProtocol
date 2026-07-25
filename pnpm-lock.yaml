@@ -20,6 +20,21 @@ importers:
 
   packages/core: {}
 
+  packages/oauth:
+    dependencies:
+      '@umg/core':
+        specifier: workspace:*
+        version: link:../core
+      '@umg/observability':
+        specifier: workspace:*
+        version: link:../observability
+      '@umg/security':
+        specifier: workspace:*
+        version: link:../security
+      '@umg/storage':
+        specifier: workspace:*
+        version: link:../storage
+
   packages/observability:
     dependencies:
       '@umg/core':
