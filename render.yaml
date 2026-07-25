@@ -1,0 +1,58 @@
+# Deployment for the UAP gateway. docs/operations/running.md explains what each
+# setting does; the notes here cover only what is specific to Render.
+services:
+  - type: web
+    name: uap-gateway
+    runtime: node
+    plan: free
+    region: oregon
+    repo: https://github.com/KARTIK-PANDEY-KP/brainbase-model-runtime
+    branch: main
+    healthCheckPath: /healthz
+    # The build needs devDependencies, so this is a plain install rather than
+    # --prod. corepack pins pnpm to the version in packageManager.
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm build
+    startCommand: node apps/gateway-api/dist/main.js
+    envVars:
+      # node:sqlite stops needing a flag at 22.13, and the storage layer is
+      # built on it, so this floor is not decorative.
+      - key: NODE_VERSION
+        value: 22.14.0
+
+      # Every OAuth redirect_uri the gateway registers is derived from this, so
+      # it has to be the public URL rather than the bind address. Render sets
+      # RENDER_EXTERNAL_URL to exactly that.
+      - key: GATEWAY_BASE_URL
+        fromService:
+          type: web
+          name: uap-gateway
+          envVarKey: RENDER_EXTERNAL_URL
+
+      # The free plan has no disk and its filesystem is ephemeral, so this file
+      # is gone on every deploy, restart and idle spin-down, taking the stored
+      # OAuth grants with it. Attach a disk (see the commented block below) and
+      # point this at the mount path to keep them.
+      - key: GATEWAY_DATABASE_FILE
+        value: /tmp/gateway.sqlite
+
+      # Set out of band: see the deploy notes. Values are not in the repo.
+      - key: GATEWAY_API_KEYS
+        sync: false
+      - key: GATEWAY_ENCRYPTION_KEYS
+        sync: false
+      # Unset, the gateway generates a signing key at boot. Authorization
+      # servers cache our JWKS, so a key that changes on restart makes them
+      # reject client assertions signed by the new one.
+      - key: GATEWAY_SIGNING_KEY
+        sync: false
+
+      - key: LOG_LEVEL
+        value: info
+
+    # Persistence needs a paid instance type; disks are not offered on free.
+    # With one attached, point GATEWAY_DATABASE_FILE at /var/data/gateway.sqlite.
+    #
+    # disk:
+    #   name: gateway-data
+    #   mountPath: /var/data
+    #   sizeGB: 1
