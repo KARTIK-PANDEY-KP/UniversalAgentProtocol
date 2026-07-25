@@ -206,8 +206,8 @@ HTTP 429 with `Retry-After`, or the JSON-RPC equivalent on the MCP endpoint,
 and the message says how long to wait.
 
 There are two budgets. `GATEWAY_API_REQUESTS_PER_MINUTE` covers the control
-plane and every MCP request except `ping`, which is never throttled so that a
-client can always tell "slow down" apart from "gone".
+plane, opening an MCP session, and every MCP request except `ping`, which is
+never throttled so that a client can always tell "slow down" apart from "gone".
 `GATEWAY_TOOL_CALLS_PER_MINUTE` applies on top of that to `tools/call` alone,
 because a tool call is the one request that spends an upstream's own quota.
 

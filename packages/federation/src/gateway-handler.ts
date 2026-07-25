@@ -122,6 +122,11 @@ export class GatewayMcpHandler implements McpServerHandler {
     params: McpInitializeParams,
     session: DownstreamSessionHandle,
   ): Promise<McpInitializeResult> {
+    // Sessions are the one thing a caller can create without asking for
+    // anything, and each one costs memory and an upstream session per
+    // connection it touches. Metering them on the same budget as the rest
+    // stops one workspace from opening them without limit.
+    this.deps.apiLimiter.require(session.tenantId, "MCP sessions");
     await this.deps.store.downstreamSessions.create({
       id: session.id,
       tenantId: session.tenantId,

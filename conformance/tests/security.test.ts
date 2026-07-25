@@ -789,10 +789,25 @@ describe("gateway security", () => {
       await neighbour.close();
     });
 
+    it("meters opening a session, so they cannot be created without limit", async () => {
+      const gateway = await newGateway({ config: { apiRequestsPerMinute: 2 } });
+      const clients = [0, 1, 2].map(
+        () =>
+          new GatewayMcpClient({ baseUrl: gateway.baseUrl, apiKey: gateway.apiKey }),
+      );
+      expect(await clients[0]!.initialize()).toBeDefined();
+      expect(await clients[1]!.initialize()).toBeDefined();
+      // A session costs memory and an upstream session per connection it
+      // touches, and needs no prior request to create.
+      await expect(clients[2]!.initialize()).rejects.toThrow(/too many MCP sessions/iu);
+      for (const client of clients) await client.close();
+    });
+
     it("meters listing too, not only calling", async () => {
-      // Three requests: creating the connection below spends one, leaving two
-      // for the client. The control plane and the MCP endpoint share a budget.
-      const gateway = await newGateway({ config: { apiRequestsPerMinute: 3 } });
+      // Four requests: creating the connection below spends one and opening
+      // the session spends another, leaving two for the client. The control
+      // plane and the MCP endpoint share a budget.
+      const gateway = await newGateway({ config: { apiRequestsPerMinute: 4 } });
       const server = new MockMcpServer({ tools: [{ name: "ping" }] });
       await server.start();
       started.push(server);
