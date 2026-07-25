@@ -18,6 +18,8 @@ import {
 import { Metric, type Logger, type MetricsRegistry } from "@umg/observability";
 import {
   CircuitBreaker,
+  canonicalIssuer,
+  sameIssuer,
   type CredentialVault,
   type SigningKeyStore,
 } from "@umg/security";
@@ -124,7 +126,7 @@ export class OAuthTokenManager {
       tenantId: request.tenantId,
       userId: request.userId,
       connectionId: request.connectionId,
-      issuer: request.issuerRecord.issuer,
+      issuer: canonicalIssuer(request.issuerRecord.issuer),
       stateHash: sha256Hex(state),
       pkceVerifierEncrypted: await this.deps.vault.encrypt(
         { tenantId: request.tenantId, purpose: "pkce_verifier" },
@@ -208,13 +210,7 @@ export class OAuthTokenManager {
         "The signed-in user does not own this authorization transaction",
       );
     }
-    if (callback.iss !== undefined && callback.iss !== transaction.issuer) {
-      this.deps.metrics.counter(Metric.InvalidIssuer, { stage: "callback" });
-      throw new GatewayError(
-        "ISSUER_MISMATCH",
-        "Authorization response came from an unexpected issuer",
-      );
-    }
+    await this.assertResponseIssuer(transaction, callback.iss);
 
     const connection = await this.deps.store.connections.get(
       transaction.tenantId,
@@ -278,6 +274,38 @@ export class OAuthTokenManager {
       grantedScopes,
       refreshable: tokens.refreshToken !== null,
     };
+  }
+
+  /**
+   * Enforces RFC 9207. An authorization server that advertises the `iss`
+   * parameter has to send it: accepting a response without one from such a
+   * server is exactly the mix-up attack the parameter exists to stop, where a
+   * malicious server relays a code it obtained from an honest one.
+   */
+  private async assertResponseIssuer(
+    transaction: OAuthTransaction,
+    iss: string | undefined,
+  ): Promise<void> {
+    const reject = (reason: string): never => {
+      this.deps.metrics.counter(Metric.InvalidIssuer, { stage: "callback" });
+      throw new GatewayError("ISSUER_MISMATCH", reason);
+    };
+    if (iss !== undefined) {
+      if (!sameIssuer(iss, transaction.issuer)) {
+        reject("Authorization response came from an unexpected issuer");
+      }
+      return;
+    }
+    const record = await this.deps.store.issuers.findByIssuer(
+      canonicalIssuer(transaction.issuer),
+    );
+    const metadata = record?.metadataJson as AuthorizationServerMetadata | undefined;
+    if (metadata?.authorization_response_iss_parameter_supported === true) {
+      reject(
+        "The authorization server publishes an issuer identifier on its " +
+          "responses, and this response carries none",
+      );
+    }
   }
 
   /**

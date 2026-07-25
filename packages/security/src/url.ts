@@ -50,12 +50,17 @@ export function canonicalizeUrl(input: string | URL, policy: UrlPolicy): string 
 }
 
 /**
- * Issuer comparison per RFC 8414: exact string match after removing a single
- * trailing slash, and never across different origins.
+ * The form an issuer is stored and compared under. RFC 8414 compares issuers
+ * as exact strings, but the same authorization server is routinely advertised
+ * with and without a trailing slash, and treating those as two servers would
+ * mint two records for one issuer.
  */
+export function canonicalIssuer(issuer: string): string {
+  return issuer.replace(/\/+$/u, "");
+}
+
 export function sameIssuer(left: string, right: string): boolean {
-  const strip = (value: string): string => value.replace(/\/+$/u, "");
-  return strip(left) === strip(right);
+  return canonicalIssuer(left) === canonicalIssuer(right);
 }
 
 export function issuerToWellKnown(issuer: string, suffix: string): string[] {

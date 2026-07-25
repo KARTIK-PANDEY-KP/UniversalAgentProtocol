@@ -227,18 +227,8 @@ export class SqliteGatewayStore implements GatewayStore {
     };
 
     this.memberships = {
-      upsert: async (membership) => {
-        const existing = membershipTable.findOne({
-          tenant_id: membership.tenantId,
-          user_id: membership.userId,
-        });
-        if (!existing) return membershipTable.insert(membership);
-        membershipTable.update(
-          { tenant_id: membership.tenantId, user_id: membership.userId },
-          { role: membership.role },
-        );
-        return { ...existing, role: membership.role };
-      },
+      upsert: async (membership) =>
+        membershipTable.upsert(membership, ["tenant_id", "user_id"]),
       get: async (tenantId, userId) =>
         membershipTable.findOne({ tenant_id: tenantId, user_id: userId }),
     };

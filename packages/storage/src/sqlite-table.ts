@@ -48,19 +48,35 @@ export class Table<T> {
     return entity;
   }
 
+  /**
+   * Inserts, or updates the row that already holds this natural key. The
+   * stored row is what comes back, and neither the surrogate `id` nor
+   * `created_at` is rewritten: other tables hold the existing id as a foreign
+   * key, so an upsert carrying a freshly minted id would orphan every one of
+   * them, and a row created once was not created again.
+   */
   upsert(entity: T, conflictColumns: string[]): T {
     const row = toRow(this.mapper, entity);
     const columns = Object.keys(row);
-    const updates = columns
-      .filter((column) => !conflictColumns.includes(column))
-      .map((column) => `${column} = excluded.${column}`)
-      .join(", ");
+    const keys = new Set([...conflictColumns, "id", "created_at"]);
+    const assignments = columns
+      .filter((column) => !keys.has(column))
+      .map((column) => `${column} = excluded.${column}`);
+    // A row that is nothing but its key still has to be returned, and
+    // `DO NOTHING` would return nothing at all.
+    const updates =
+      assignments.length > 0
+        ? assignments.join(", ")
+        : `${conflictColumns[0]} = excluded.${conflictColumns[0]}`;
     const sql =
       `INSERT INTO ${this.table} (${columns.join(", ")}) ` +
       `VALUES (${columns.map(() => "?").join(", ")}) ` +
-      `ON CONFLICT (${conflictColumns.join(", ")}) DO UPDATE SET ${updates}`;
-    this.db.prepare(sql).run(...columns.map((column) => row[column] ?? null));
-    return entity;
+      `ON CONFLICT (${conflictColumns.join(", ")}) DO UPDATE SET ${updates} ` +
+      `RETURNING *`;
+    const stored = this.db
+      .prepare(sql)
+      .get(...columns.map((column) => row[column] ?? null)) as Record<string, unknown>;
+    return fromRow(this.mapper, normalizeRow(stored));
   }
 
   findOne(where: Where): T | null {

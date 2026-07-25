@@ -31,8 +31,11 @@ gateway falls back to the well-known path derived from the MCP URL.
 Each candidate issuer is then resolved through `/.well-known/oauth-authorization-server`
 (or OIDC discovery). The response must declare an `issuer` that matches the URL
 it was fetched from; a mismatch is `ISSUER_MISMATCH` and the connection stops
-there. Metadata is cached with its ETag and expiry so a repeated connection
-does not re-fetch it.
+there. Every endpoint it publishes must be an absolute `http`/`https` URL, and
+HTTPS unless the gateway is configured to allow plain HTTP — discovery is the
+last cheap moment to notice, since the alternative is failing after the user
+has already approved. Metadata is cached with its ETag and expiry so a repeated
+connection does not re-fetch it.
 
 Everything discovered is bound to `(tenant, issuer, canonical resource)`. The
 MCP hostname alone is never the key.
@@ -102,10 +105,23 @@ another. It is sent on both the authorization request and the token request.
 
 `GET /oauth/callback` consumes the transaction exactly once. Before exchanging
 anything it checks that the transaction exists and has not expired, that the
-state matches, that any `iss` parameter equals the expected issuer, that the
-redirect URI is the one that was registered, that the connection still exists,
-and that the acting user matches the one who started the flow. Consumption is
-an atomic update, so a replayed authorization code finds nothing to consume.
+state matches, that the redirect URI is the one that was registered, that the
+connection still exists, and that the acting user matches the one who started
+the flow. Consumption is an atomic update, so a replayed authorization code
+finds nothing to consume.
+
+The `iss` parameter is checked per RFC 9207. An `iss` that disagrees with the
+expected issuer is rejected, and so is a *missing* `iss` when the authorization
+server's metadata sets `authorization_response_iss_parameter_supported`.
+Accepting a response with no `iss` from a server that promises one is the
+mix-up attack the parameter exists to stop: a malicious authorization server
+relays a code it obtained from an honest one, and without `iss` the client
+cannot tell which server answered.
+
+Issuers are compared, stored and keyed in canonical form — a trailing slash is
+not a different authorization server. Two resources that spell the same issuer
+differently share one issuer record, which matters because connections and
+client registrations reference that record by ID.
 
 The code is then exchanged with `code_verifier`, the exact `redirect_uri` and
 the same `resource`. The gateway authenticates itself using whichever method

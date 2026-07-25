@@ -10,6 +10,7 @@ import {
 } from "@umg/core";
 import { Metric, type Logger, type MetricsRegistry } from "@umg/observability";
 import {
+  canonicalIssuer,
   canonicalizeUrl,
   issuerToWellKnown,
   parseAbsoluteUrl,
@@ -125,7 +126,10 @@ export class OAuthDiscoveryService {
   async discoverAuthorizationServer(
     issuer: string,
   ): Promise<AuthorizationServerDiscovery> {
-    const cached = await this.deps.store.issuers.findByIssuer(issuer);
+    // Keyed on the canonical issuer, so the same server advertised by two
+    // resources with and without a trailing slash resolves to one record and
+    // keeps the id every connection and client registration points at.
+    const cached = await this.deps.store.issuers.findByIssuer(canonicalIssuer(issuer));
     if (cached && cached.metadataExpiresAt > this.deps.clock.now()) {
       return { record: cached, metadata: cached.metadataJson as AuthorizationServerMetadata };
     }
@@ -182,6 +186,31 @@ export class OAuthDiscoveryService {
         "Authorization server does not expose the endpoints required for the authorization code flow",
       );
     }
+    // A discovery document the gateway will send codes, secrets and refresh
+    // tokens to. An endpoint that is relative, uses another scheme, or drops
+    // to plain HTTP is not something to find out about mid-flow.
+    for (const field of [
+      "authorization_endpoint",
+      "token_endpoint",
+      "registration_endpoint",
+      "revocation_endpoint",
+      "introspection_endpoint",
+      "jwks_uri",
+      "pushed_authorization_request_endpoint",
+    ] as const) {
+      const endpoint = metadata[field];
+      if (endpoint === undefined) continue;
+      if (typeof endpoint !== "string") {
+        throw new GatewayError("DISCOVERY_FAILED", `${field} is not a URL`);
+      }
+      const url = parseAbsoluteUrl(endpoint);
+      if (url.protocol === "http:" && !this.deps.allowHttp) {
+        throw new GatewayError(
+          "DISCOVERY_FAILED",
+          `${field} must be served over HTTPS`,
+        );
+      }
+    }
     const methods = metadata.code_challenge_methods_supported;
     if (methods && !methods.includes("S256")) {
       throw new GatewayError(
@@ -199,7 +228,7 @@ export class OAuthDiscoveryService {
     const ttl = this.deps.metadataTtlMs ?? DEFAULT_TTL_MS;
     const record: OAuthIssuerRecord = {
       id: existing?.id ?? newId("iss"),
-      issuer: metadata.issuer,
+      issuer: canonicalIssuer(metadata.issuer),
       authorizationEndpoint: metadata.authorization_endpoint ?? null,
       tokenEndpoint: metadata.token_endpoint ?? null,
       registrationEndpoint: metadata.registration_endpoint ?? null,

@@ -52,6 +52,12 @@ export interface MockAuthorizationServerOptions {
   requireDpopNonce?: boolean;
   /** Serve discovery only at the OpenID Connect location. */
   discoveryStyle?: "oauth" | "openid";
+  /**
+   * Leave `iss` off the authorization response. Combined with metadata that
+   * advertises the parameter, this is what a mix-up attack looks like from
+   * the client's side.
+   */
+  omitResponseIssuer?: boolean;
   /** Extra members merged into the published metadata document. */
   metadataOverrides?: Record<string, unknown>;
 }
@@ -252,6 +258,7 @@ export class MockAuthorizationServer {
       token_endpoint_auth_methods_supported:
         this.options.tokenEndpointAuthMethods ?? DEFAULTS.tokenEndpointAuthMethods,
       resource_indicators_supported: true,
+      authorization_response_iss_parameter_supported: true,
     };
     if (this.options.supportsCimd) base["client_id_metadata_document_supported"] = true;
     if (this.options.supportsDcr) base["registration_endpoint"] = `${this.issuer}/register`;
@@ -347,7 +354,9 @@ export class MockAuthorizationServer {
     const location = new URL(redirectUri);
     location.searchParams.set("code", code.code);
     if (state) location.searchParams.set("state", state);
-    location.searchParams.set("iss", this.issuer);
+    if (!this.options.omitResponseIssuer) {
+      location.searchParams.set("iss", this.issuer);
+    }
     redirect(res, location.toString());
   }
 

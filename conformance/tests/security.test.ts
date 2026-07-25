@@ -373,6 +373,32 @@ describe("gateway security", () => {
       expect(gateway.services.metrics.render()).toContain("invalid_issuer_total");
     });
 
+    it("refuses a response with no issuer from a server that promises one", async () => {
+      const upstream = await startProtectedUpstream({
+        authorizationServer: { supportsDcr: true, omitResponseIssuer: true },
+        mcpServer: { tools: [{ name: "ping" }] },
+      });
+      started.push(upstream);
+      const gateway = await newGateway();
+
+      const created = await gateway.createConnection(upstream.url, { alias: "up" });
+      const authorizationUrl =
+        created.authorization_url ?? (await gateway.authorizeUrl(created.connection_id));
+      const redirect = await fetch(authorizationUrl, { redirect: "manual" });
+      const callbackUrl = redirect.headers.get("location") ?? "";
+      expect(new URL(callbackUrl).searchParams.get("iss")).toBeNull();
+
+      // RFC 9207: a server that advertises the parameter has to send it. A
+      // response missing it is what a mix-up attack looks like from here, so
+      // the code is never exchanged.
+      const response = await fetch(callbackUrl, {
+        headers: { authorization: `Bearer ${gateway.apiKey}` },
+      });
+      expect(response.status).toBe(400);
+      expect(await response.text()).toContain("this response carries none");
+      expect(upstream.authorizationServer.stats.codeExchanges).toBe(0);
+    });
+
     it("refuses a callback completed by a different signed-in user", async () => {
       const upstream = await startProtectedUpstream({
         authorizationServer: { supportsDcr: true },

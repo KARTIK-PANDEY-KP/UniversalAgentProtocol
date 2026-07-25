@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
+import { GatewayError } from "@umg/core";
 import {
   GatewayFixture,
   HttpFixture,
@@ -194,6 +195,47 @@ describe("OAuth discovery", () => {
 
     await gateway.services.discovery.discoverAuthorizationServer(authorizationServer.issuer);
     expect(authorizationServer.stats.metadataRequests).toBe(2);
+  });
+
+  it("keeps one record for an issuer two resources spell differently", async () => {
+    const authorizationServer = new MockAuthorizationServer({ supportsDcr: true });
+    await authorizationServer.start();
+    started.push(authorizationServer);
+    const gateway = await newGateway();
+
+    const first = await gateway.services.discovery.discoverAuthorizationServer(
+      authorizationServer.issuer,
+    );
+    // A second resource advertises the same server with a trailing slash.
+    // Treating that as a new issuer would mint a second record and orphan
+    // every connection and client registration pointing at the first.
+    const second = await gateway.services.discovery.discoverAuthorizationServer(
+      `${authorizationServer.issuer}/`,
+    );
+
+    expect(second.record.id).toBe(first.record.id);
+    expect(authorizationServer.stats.metadataRequests).toBe(1);
+  });
+
+  it("refuses metadata whose endpoints are not absolute URLs", async () => {
+    const authorizationServer = new MockAuthorizationServer({
+      supportsDcr: true,
+      metadataOverrides: { token_endpoint: "/token" },
+    });
+    await authorizationServer.start();
+    started.push(authorizationServer);
+    const gateway = await newGateway();
+
+    // Discovery is the last moment this is cheap to notice. Accepting it here
+    // defers the failure to the token request, after the user has approved.
+    const failure = await gateway.services.discovery
+      .discoverAuthorizationServer(authorizationServer.issuer)
+      .catch((error: Error) => error);
+
+    expect(failure).toBeInstanceOf(GatewayError);
+    expect(JSON.stringify((failure as GatewayError).data)).toContain(
+      "Not an absolute URL: /token",
+    );
   });
 
   it("reports a clear error for an endpoint that does not speak MCP", async () => {
