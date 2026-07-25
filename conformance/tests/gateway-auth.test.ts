@@ -293,6 +293,47 @@ describe("gateway authentication", () => {
     expect((await mcp(gateway, before)).status).toBe(401);
   });
 
+  it("will not refetch the key set once per invented key id", async () => {
+    const { gateway, provider, resource } = await scenario();
+    const good = provider.issueToken({
+      audience: resource,
+      scope: "mcp",
+      claims: { tenant_id: gateway.tenantId },
+    });
+    expect((await mcp(gateway, good)).status).toBe(200);
+    expect(provider.jwksRequests).toBe(1);
+
+    // Unknown key ids are how a rotation looks, so the first one is chased.
+    // Chasing all of them would make an unauthenticated caller a lever on the
+    // operator's authorization server.
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const forged = provider.issueToken({
+        audience: resource,
+        scope: "mcp",
+        keyId: `invented-${attempt}`,
+        claims: { tenant_id: gateway.tenantId },
+      });
+      expect((await mcp(gateway, forged)).status).toBe(401);
+    }
+    expect(provider.jwksRequests).toBe(2);
+  });
+
+  it("refuses a JWT the issuer signed for some other purpose", async () => {
+    const { gateway, provider, resource } = await scenario();
+    // A DPoP proof is a JWT the same issuer's ecosystem produces. It is not an
+    // access token, and it says so in its own header.
+    const token = provider.issueToken({
+      audience: resource,
+      scope: "mcp",
+      type: "dpop+jwt",
+      claims: { tenant_id: gateway.tenantId },
+    });
+
+    const { status, body } = await mcp(gateway, token);
+    expect(status).toBe(401);
+    expect(String(body["error_description"])).toContain("not an access token");
+  });
+
   it("caches the key set instead of refetching it per request", async () => {
     const { gateway, provider, resource } = await scenario();
     const token = provider.issueToken({

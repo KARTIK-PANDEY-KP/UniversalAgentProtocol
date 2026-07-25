@@ -34,7 +34,16 @@ export interface ResourceServerOptions {
   requiredScopes: readonly string[];
   allowHttp: boolean;
   jwksTtlMs?: number;
+  /** Shortest gap between two key-set fetches for one issuer. */
+  jwksRefetchCooldownMs?: number;
   clockSkewSeconds?: number;
+}
+
+interface KeySet {
+  keys: JsonObject[];
+  expiresAt: number;
+  /** When an unknown key id last forced an early refetch of this set. */
+  refetchedAt: number | null;
 }
 
 /**
@@ -49,7 +58,9 @@ export interface ResourceServerOptions {
  * authorization server would then unlock every resource that trusts it.
  */
 export class ResourceServerAuthenticator {
-  private readonly jwks = new Map<string, { keys: JsonObject[]; expiresAt: number }>();
+  private readonly jwks = new Map<string, KeySet>();
+  /** Fetches in progress, so a burst of misses costs one request, not many. */
+  private readonly inFlight = new Map<string, Promise<JsonObject[]>>();
 
   constructor(private readonly options: ResourceServerOptions) {}
 
@@ -64,6 +75,13 @@ export class ResourceServerAuthenticator {
     const alg = header["alg"];
     if (typeof alg !== "string" || !(alg in ALGORITHMS)) {
       throw invalidToken(`Unsupported token signing algorithm: ${String(alg)}`);
+    }
+    // Anything the same issuer signs with a declared type of its own is some
+    // other kind of JWT — an ID token, a DPoP proof, a security event — and
+    // was not minted to authorize a call to this gateway.
+    const typ = header["typ"];
+    if (typeof typ === "string" && !ACCESS_TOKEN_TYPES.has(typ.toLowerCase())) {
+      throw invalidToken(`A ${typ} is not an access token`);
     }
 
     const issuer = claims["iss"];
@@ -90,7 +108,10 @@ export class ResourceServerAuthenticator {
     }
     const clientId = claims["client_id"];
     return {
-      issuer,
+      // The configured spelling, not the token's: callers namespace subjects
+      // by issuer, and two spellings of one issuer must not become two
+      // namespaces.
+      issuer: configured,
       subject,
       scopes,
       clientId: typeof clientId === "string" ? clientId : null,
@@ -152,33 +173,57 @@ export class ResourceServerAuthenticator {
   }
 
   /**
-   * Resolves the issuer's signing key, refetching the key set once when a key
-   * id is unknown so that a rotation does not lock every client out until the
-   * cache expires.
+   * Resolves the issuer's signing key, refetching the key set when a key id is
+   * unknown so that a rotation does not lock every client out until the cache
+   * expires.
+   *
+   * That early refetch is on a cooldown, because otherwise it is an
+   * amplifier: an unauthenticated caller sending tokens with invented key ids
+   * would turn each one into an outbound request to the operator's
+   * authorization server. One rotation is followed immediately; a stream of
+   * unknown key ids costs one fetch per cooldown and is refused in between.
    */
   private async signingKey(issuer: string, header: JsonObject): Promise<KeyObject> {
     const kid = typeof header["kid"] === "string" ? header["kid"] : null;
     const alg = String(header["alg"]);
+    const now = this.options.clock.now();
 
-    const cached = this.jwks.get(issuer);
-    if (cached && cached.expiresAt > this.options.clock.now()) {
-      const found = selectKey(cached.keys, kid, alg);
-      if (found) return toKeyObject(found);
-    }
-
-    const keys = await this.fetchJwks(issuer);
-    const found = selectKey(keys, kid, alg);
-    if (!found) {
-      throw invalidToken(
+    const unknownKey = (): GatewayError =>
+      invalidToken(
         kid === null
           ? `Issuer ${issuer} publishes no key usable for ${alg}`
           : `Issuer ${issuer} publishes no key with id ${kid}`,
       );
+
+    const cached = this.jwks.get(issuer);
+    if (cached && cached.expiresAt > now) {
+      const found = selectKey(cached.keys, kid, alg);
+      if (found) return toKeyObject(found);
+      const cooldown =
+        this.options.jwksRefetchCooldownMs ?? DEFAULT_JWKS_REFETCH_COOLDOWN_MS;
+      if (cached.refetchedAt !== null && now - cached.refetchedAt < cooldown) {
+        throw unknownKey();
+      }
+      cached.refetchedAt = now;
     }
+
+    const keys = await this.fetchJwks(issuer);
+    const found = selectKey(keys, kid, alg);
+    if (!found) throw unknownKey();
     return toKeyObject(found);
   }
 
   private async fetchJwks(issuer: string): Promise<JsonObject[]> {
+    const pending = this.inFlight.get(issuer);
+    if (pending) return pending;
+    const fetching = this.loadJwks(issuer).finally(() => {
+      this.inFlight.delete(issuer);
+    });
+    this.inFlight.set(issuer, fetching);
+    return fetching;
+  }
+
+  private async loadJwks(issuer: string): Promise<JsonObject[]> {
     const { metadata } = await this.options.discovery.discoverAuthorizationServer(issuer);
     const jwksUri = metadata.jwks_uri;
     if (typeof jwksUri !== "string") {
@@ -190,9 +235,11 @@ export class ResourceServerAuthenticator {
       throw invalidToken(`Key set at ${jwksUri} has no keys`);
     }
     const usable = keys.filter((entry): entry is JsonObject => isRecord(entry));
+    const now = this.options.clock.now();
     this.jwks.set(issuer, {
       keys: usable,
-      expiresAt: this.options.clock.now() + (this.options.jwksTtlMs ?? DEFAULT_JWKS_TTL_MS),
+      expiresAt: now + (this.options.jwksTtlMs ?? DEFAULT_JWKS_TTL_MS),
+      refetchedAt: this.jwks.get(issuer)?.refetchedAt ?? null,
     });
     this.options.logger.debug("Loaded a signing key set", {
       issuer,
@@ -203,7 +250,12 @@ export class ResourceServerAuthenticator {
 }
 
 const DEFAULT_JWKS_TTL_MS = 3_600_000;
+/** Long enough to blunt the amplifier, short enough to survive a rotation. */
+const DEFAULT_JWKS_REFETCH_COOLDOWN_MS = 60_000;
 const DEFAULT_SKEW_SECONDS = 60;
+
+/** RFC 9068 names access tokens `at+jwt`; plain `JWT` is what most still send. */
+const ACCESS_TOKEN_TYPES = new Set(["jwt", "at+jwt", "application/at+jwt"]);
 
 interface AlgorithmSpec {
   hash: string | null;

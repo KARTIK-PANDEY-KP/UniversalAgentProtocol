@@ -29,6 +29,8 @@ export interface IssueTokenOptions {
   /** Replace the `alg` header without changing how the token is signed. */
   algorithmHeader?: string;
   keyId?: string;
+  /** Declare something other than an access token in the `typ` header. */
+  type?: string;
 }
 
 interface SigningKey {
@@ -100,7 +102,7 @@ export class MockIdentityProvider {
     }
 
     const header = {
-      typ: "at+jwt",
+      typ: options.type ?? "at+jwt",
       alg: options.algorithmHeader ?? this.algorithm,
       kid: advertisedKid,
     };
