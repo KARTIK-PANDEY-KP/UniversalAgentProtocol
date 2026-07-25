@@ -15,7 +15,11 @@ import { Metric, type Logger, type MetricsRegistry } from "@umg/observability";
 import type { CredentialVault, SafeFetcher, SigningKeyStore } from "@umg/security";
 import type { GatewayStore } from "@umg/storage";
 
-import type { GatewayIdentity } from "./client-metadata.js";
+import {
+  assertValidClientIdMetadataUrl,
+  buildClientIdMetadataDocument,
+  type GatewayIdentity,
+} from "./client-metadata.js";
 import { OAuthProtocolError } from "./protocol-error.js";
 
 export interface RegistrationContext {
@@ -56,6 +60,8 @@ export interface RegistrationDeps {
   clock: Clock;
   logger: Logger;
   metrics: MetricsRegistry;
+  /** Development deployments are reachable over plain HTTP; production is not. */
+  allowHttp: boolean;
 }
 
 function pickAuthMethod(
@@ -174,7 +180,26 @@ export class ClientIdMetadataDocumentStrategy
   constructor(private readonly deps: RegistrationDeps) {}
 
   async supports(metadata: AuthorizationServerMetadata): Promise<boolean> {
-    return metadata.client_id_metadata_document_supported === true;
+    if (metadata.client_id_metadata_document_supported !== true) return false;
+    // Being identified by URL only works if the document this deployment
+    // publishes satisfies the invariants the specification places on it. A
+    // gateway whose base URL has no path, or is plain HTTP in production,
+    // would be turned away by the authorization server, so it is better to
+    // fall through to dynamic registration than to fail the connection.
+    try {
+      assertValidClientIdMetadataUrl(
+        this.deps.identity.clientMetadataUrl,
+        buildClientIdMetadataDocument(this.deps.identity),
+        { allowHttp: this.deps.allowHttp },
+      );
+      return true;
+    } catch (error) {
+      this.deps.logger.warn("This deployment cannot be identified by metadata URL", {
+        clientMetadataUrl: this.deps.identity.clientMetadataUrl,
+        reason: (error as Error).message,
+      });
+      return false;
+    }
   }
 
   async getOrCreateRegistration(

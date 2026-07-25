@@ -6,7 +6,6 @@ import {
   clampText,
   constantTimeEquals,
   isRecord,
-  newId,
   safeJsonParse,
   systemClock,
   toGatewayError,
@@ -162,6 +161,7 @@ export class Gateway {
       clock,
       logger,
       metrics,
+      allowHttp: config.allowHttp,
     });
     const tokenManager = new OAuthTokenManager({
       store,
@@ -592,10 +592,6 @@ export function parseJsonBody(raw: string): Record<string, unknown> {
     throw new GatewayError("INVALID_REQUEST", "Expected a JSON object body");
   }
   return parsed;
-}
-
-export function newRequestId(): string {
-  return newId("req");
 }
 
 export type { ApiKeyPrincipal, GatewayConfig };
