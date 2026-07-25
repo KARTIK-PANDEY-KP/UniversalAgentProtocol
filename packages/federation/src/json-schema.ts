@@ -43,8 +43,14 @@ export function validateAgainstSchema(
       issues.push({ path, message: `shorter than ${minLength} characters` });
     }
     const pattern = schema["pattern"];
-    if (typeof pattern === "string" && !safeRegExp(pattern)?.test(value)) {
-      issues.push({ path, message: "does not match the required pattern" });
+    if (typeof pattern === "string") {
+      const expression = safeRegExp(pattern);
+      // A pattern this validator cannot compile is not a failed argument. The
+      // upstream is the authority on its own inputs, so an unreadable rule
+      // means this check abstains rather than rejecting everything.
+      if (expression && !expression.test(value)) {
+        issues.push({ path, message: "does not match the required pattern" });
+      }
     }
   }
 
@@ -122,11 +128,22 @@ function matchesType(type: string, value: unknown): boolean {
   }
 }
 
+/**
+ * JSON Schema patterns are ECMA-262 regular expressions, which is not the same
+ * dialect as one compiled with the `u` flag: `[a-z\-]` and `\d{2}\-\d{2}` are
+ * ordinary patterns that a unicode-mode compile rejects outright. Unicode mode
+ * is tried first because it is the stricter reading, then plain mode, and a
+ * pattern neither can compile is left to the upstream to enforce.
+ */
 function safeRegExp(pattern: string): RegExp | null {
   if (pattern.length > 200) return null;
   try {
     return new RegExp(pattern, "u");
   } catch {
-    return null;
+    try {
+      return new RegExp(pattern);
+    } catch {
+      return null;
+    }
   }
 }

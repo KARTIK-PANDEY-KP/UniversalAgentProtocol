@@ -1,6 +1,7 @@
 import { sha256Hex } from "@umg/core";
 
 const MAX_TOOL_NAME = 128;
+const MAX_ALIAS = 40;
 const ALIAS_PATTERN = /^[a-z0-9][a-z0-9_-]{0,38}[a-z0-9]$|^[a-z0-9]$/u;
 
 /**
@@ -28,8 +29,10 @@ export function sanitizeAlias(value: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9_-]+/gu, "-")
     .replace(/^[^a-z0-9]+/u, "")
-    .replace(/[^a-z0-9]+$/u, "")
-    .slice(0, 40);
+    // Truncated before the trailing separators are stripped, or a cut landing
+    // on a dash would leave one at the end and fail isValidAlias.
+    .slice(0, MAX_ALIAS)
+    .replace(/[^a-z0-9]+$/u, "");
   return cleaned.length > 0 ? cleaned : "server";
 }
 
@@ -37,13 +40,20 @@ export function isValidAlias(value: string): boolean {
   return ALIAS_PATTERN.test(value);
 }
 
+/** Trims a base so that `base + suffix` still fits an alias. */
+function roomFor(base: string, suffix: string): string {
+  const kept = base.slice(0, MAX_ALIAS - suffix.length).replace(/[^a-z0-9]+$/u, "");
+  return kept.length > 0 ? kept : "server";
+}
+
 export function dedupeAlias(base: string, taken: readonly string[]): string {
   if (!taken.includes(base)) return base;
   for (let suffix = 2; suffix < 1000; suffix += 1) {
-    const candidate = `${base}_${suffix}`;
+    const candidate = `${roomFor(base, `_${suffix}`)}_${suffix}`;
     if (!taken.includes(candidate)) return candidate;
   }
-  return `${base}_${sha256Hex(base).slice(0, 6)}`;
+  const digest = `_${sha256Hex(base).slice(0, 6)}`;
+  return `${roomFor(base, digest)}${digest}`;
 }
 
 /** MCP tool names accept letters, digits, underscore, dash and dot. */
@@ -59,10 +69,16 @@ export function gatewayToolName(
 ): string {
   const base = `${alias}.${normalizeToolSegment(upstreamName)}`.slice(0, MAX_TOOL_NAME);
   if (!taken.has(base)) return base;
-  // Two upstream names normalised onto the same gateway name: keep both
-  // reachable with a deterministic suffix derived from the upstream name.
-  const suffix = sha256Hex(upstreamName).slice(0, 8);
-  return `${base.slice(0, MAX_TOOL_NAME - suffix.length - 1)}_${suffix}`;
+  // Two upstream names normalised or truncated onto the same gateway name:
+  // keep both reachable behind a suffix derived from the upstream name. The
+  // counter covers the case the digest cannot, which is two tools whose
+  // upstream names are also identical.
+  const digest = sha256Hex(upstreamName).slice(0, 8);
+  for (let attempt = 0; ; attempt += 1) {
+    const suffix = attempt === 0 ? `_${digest}` : `_${digest}_${attempt}`;
+    const candidate = `${base.slice(0, MAX_TOOL_NAME - suffix.length)}${suffix}`;
+    if (!taken.has(candidate)) return candidate;
+  }
 }
 
 export function gatewayPromptName(alias: string, upstreamName: string): string {
