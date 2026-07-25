@@ -120,6 +120,13 @@ export interface NorthboundServerOptions {
   sessionIdleMs?: number;
 }
 
+/** The `Last-Event-ID` of a reconnecting client, if it sent a usable one. */
+function parseEventId(value: string | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : undefined;
+}
+
 /** Methods whose responses may be preceded by progress notifications. */
 const STREAMING_METHODS = new Set<string>([
   McpMethod.ToolsCall,
@@ -487,7 +494,7 @@ export class NorthboundMcpServer {
     const stream: EventStreamWriter = openEventStream(res, {
       [MCP_SESSION_HEADER]: session.id,
     });
-    session.attachStream(stream);
+    session.attachStream(stream, parseEventId(headerValue(req, "last-event-id")));
     const keepAlive = setInterval(() => stream.comment("keep-alive"), 25_000);
     keepAlive.unref?.();
     res.on("close", () => {

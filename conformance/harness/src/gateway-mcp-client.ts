@@ -58,6 +58,7 @@ export class GatewayMcpClient {
   private nextId = 1;
   private streamController: AbortController | null = null;
   private streamClosed: Promise<void> | null = null;
+  private lastEventId: string | null = null;
 
   readonly notifications: JsonRpcNotification[] = [];
 
@@ -95,14 +96,25 @@ export class GatewayMcpClient {
     return result;
   }
 
-  /** Opens the GET event stream that carries notifications and server requests. */
-  async openStream(): Promise<void> {
+  /**
+   * Opens the GET event stream that carries notifications and server requests.
+   * `resume` replays from the last event id seen, the way an SSE client
+   * reconnects after the connection drops; `resumeFrom` names an earlier id,
+   * for tests that need to prove the replay window is honoured.
+   */
+  async openStream(
+    options: { resume?: boolean; resumeFrom?: string } = {},
+  ): Promise<void> {
     if (this.streamController) return;
     const controller = new AbortController();
     this.streamController = controller;
+    const extra: Record<string, string> = { accept: "text/event-stream" };
+    const from =
+      options.resumeFrom ?? (options.resume ? (this.lastEventId ?? undefined) : undefined);
+    if (from !== undefined) extra["last-event-id"] = from;
     const response = await fetch(this.mcpUrl, {
       method: "GET",
-      headers: this.headers({ accept: "text/event-stream" }),
+      headers: this.headers(extra),
       signal: controller.signal,
     });
     if (!response.ok || !response.body) {
@@ -116,6 +128,7 @@ export class GatewayMcpClient {
     void (async () => {
       try {
         for await (const event of readSse(response.body as ReadableStream<Uint8Array>)) {
+          if (event.id !== null) this.lastEventId = event.id;
           this.handleStreamMessage(JSON.parse(event.data) as unknown);
         }
       } catch {
@@ -224,10 +237,16 @@ export class GatewayMcpClient {
     });
   }
 
-  async close(): Promise<void> {
+  /** Drops the event stream but keeps the session, as a network blip would. */
+  async closeStream(): Promise<void> {
     this.streamController?.abort();
     this.streamController = null;
     if (this.streamClosed) await this.streamClosed.catch(() => undefined);
+    this.streamClosed = null;
+  }
+
+  async close(): Promise<void> {
+    await this.closeStream();
     if (!this.sessionId) return;
     await fetch(this.mcpUrl, { method: "DELETE", headers: this.headers({}) }).catch(
       () => undefined,

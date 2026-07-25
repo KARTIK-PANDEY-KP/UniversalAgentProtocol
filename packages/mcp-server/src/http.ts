@@ -64,7 +64,6 @@ export function openEventStream(
 
 export class EventStreamWriter {
   private closed = false;
-  private eventId = 0;
 
   constructor(private readonly res: ServerResponse) {
     res.on("close", () => {
@@ -76,12 +75,15 @@ export class EventStreamWriter {
     return this.closed || this.res.writableEnded;
   }
 
-  write(message: unknown): void {
+  /**
+   * Writes one MCP message. An `id` is attached only where the stream can
+   * actually be resumed from it; a stream that carries a single response has
+   * nothing to resume, and labelling its events would promise otherwise.
+   */
+  write(message: unknown, id?: number): void {
     if (this.isClosed) return;
-    this.eventId += 1;
-    this.res.write(
-      `id: ${this.eventId}\nevent: message\ndata: ${JSON.stringify(message)}\n\n`,
-    );
+    const label = id === undefined ? "" : `id: ${id}\n`;
+    this.res.write(`${label}event: message\ndata: ${JSON.stringify(message)}\n\n`);
   }
 
   comment(text: string): void {

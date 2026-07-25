@@ -115,6 +115,16 @@ Codex and a generic SDK client against a live gateway: each initializes,
 receives the aggregate catalogue, routes tool calls correctly, keeps a distinct
 session, and survives an upstream reauthorization without being reconfigured.
 
+## Stream resumption
+
+Messages on a session's event stream carry an `id`, and a client that
+reconnects with `Last-Event-ID` is replayed everything after it from a
+256-message window. A client that opens a stream without that header is sent
+only what no stream has carried yet, so a fresh client does not receive the
+history of a session it is only now joining. Per-request response streams carry
+no ids: there is nothing to resume when the whole stream is one answer, and
+labelling those events would promise otherwise.
+
 ## Protocol version negotiation
 
 The gateway advertises the latest protocol revision it implements and accepts

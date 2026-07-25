@@ -231,6 +231,39 @@ describe("tool federation", () => {
     await client.close();
   });
 
+  it("replays what a client missed while its event stream was down", async () => {
+    const gateway = await newGateway();
+    const server = await openMcpServer({ tools: [{ name: "one" }] });
+    const connection = await gateway.createConnection(server.url, { alias: "up" });
+
+    const client = await connectedClient(gateway);
+    await client.openStream();
+
+    server.setTools([{ name: "one" }, { name: "two" }], false);
+    await gateway.api("POST", `/api/v1/connections/${connection.connection_id}/refresh`);
+    await waitFor(() => countOf(client, McpMethod.ToolListChanged) === 1);
+
+    // The stream drops while the session stays alive, which is what a laptop
+    // sleeping or a proxy timing out looks like from here.
+    await client.closeStream();
+    server.setTools([{ name: "one" }], false);
+    await gateway.api("POST", `/api/v1/connections/${connection.connection_id}/refresh`);
+
+    await client.openStream({ resume: true });
+    // Resuming delivers the change that happened in the gap, and does not
+    // re-deliver the one the client already acknowledged by its event id.
+    await waitFor(() => countOf(client, McpMethod.ToolListChanged) === 2);
+    expect((await client.listTools()).map((tool) => tool.name)).toEqual(["up.one"]);
+
+    // A client that reconnects from an earlier point gets the whole window
+    // again, which is the part a mere backlog of undelivered messages could
+    // not do.
+    await client.closeStream();
+    await client.openStream({ resumeFrom: "0" });
+    await waitFor(() => countOf(client, McpMethod.ToolListChanged) === 4);
+    await client.close();
+  });
+
   it("hides a disabled tool and refuses to call it", async () => {
     const gateway = await newGateway();
     const server = await openMcpServer({
@@ -673,6 +706,12 @@ describe("tool federation", () => {
     expect(await gateway.listConnections()).toHaveLength(1);
   });
 });
+
+function countOf(client: GatewayMcpClient, method: string): number {
+  return client.notifications.filter(
+    (notification) => notification.method === method,
+  ).length;
+}
 
 async function waitFor(predicate: () => boolean, timeoutMs = 2000): Promise<void> {
   const deadline = Date.now() + timeoutMs;

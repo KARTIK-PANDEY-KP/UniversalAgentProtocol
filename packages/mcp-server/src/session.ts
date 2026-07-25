@@ -47,6 +47,21 @@ interface PendingServerRequest {
   timer: NodeJS.Timeout;
 }
 
+interface HistoryEntry {
+  id: number;
+  message: JsonRpcNotification | JsonRpcRequest;
+  /** False while no stream has carried it, so the next one to open gets it. */
+  delivered: boolean;
+}
+
+/**
+ * How many messages a session keeps for replay. A client that was away long
+ * enough to miss more than this cannot be caught up exactly; it will still see
+ * the catalogue change notifications that matter, because the gateway re-sends
+ * one per change rather than a diff.
+ */
+const HISTORY_LIMIT = 256;
+
 export class DownstreamSession implements DownstreamSessionHandle {
   readonly id: string;
   protocolVersion: string;
@@ -55,7 +70,8 @@ export class DownstreamSession implements DownstreamSessionHandle {
   lastSeenAt: number;
 
   private streams = new Set<EventStreamWriter>();
-  private readonly queued: JsonRpcNotification[] = [];
+  private readonly history: HistoryEntry[] = [];
+  private nextEventId = 1;
   private readonly pending = new Map<RequestId, PendingServerRequest>();
   /** Requests the client is still waiting on, so it can cancel one by id. */
   private readonly inFlight = new Map<RequestId, AbortController>();
@@ -84,11 +100,22 @@ export class DownstreamSession implements DownstreamSessionHandle {
     this.logLevel = level;
   }
 
-  attachStream(stream: EventStreamWriter): void {
+  /**
+   * Attaches a client's event stream. `lastEventId` is the `Last-Event-ID`
+   * header of a reconnecting client: everything after it is replayed, which is
+   * what makes the ids on the wire worth attaching. Without one, only messages
+   * no stream has carried yet are sent, so a fresh client is not shown the
+   * history of a session it is only now joining.
+   */
+  attachStream(stream: EventStreamWriter, lastEventId?: number): void {
     this.streams.add(stream);
-    while (this.queued.length > 0) {
-      const message = this.queued.shift();
-      if (message) stream.write(message);
+    const replay =
+      lastEventId === undefined
+        ? this.history.filter((entry) => !entry.delivered)
+        : this.history.filter((entry) => entry.id > lastEventId);
+    for (const entry of replay) {
+      stream.write(entry.message, entry.id);
+      entry.delivered = true;
     }
   }
 
@@ -104,14 +131,28 @@ export class DownstreamSession implements DownstreamSessionHandle {
   }
 
   sendNotification(notification: JsonRpcNotification): void {
+    this.deliver(notification);
+  }
+
+  /**
+   * Records a message against the session's event ids and writes it to every
+   * live stream. With no stream open it stays in the history undelivered, so a
+   * client that reconnects still learns about catalogue changes.
+   */
+  private deliver(message: JsonRpcNotification | JsonRpcRequest): void {
+    const entry: HistoryEntry = {
+      id: this.nextEventId,
+      message,
+      delivered: false,
+    };
+    this.nextEventId += 1;
+    this.history.push(entry);
+    if (this.history.length > HISTORY_LIMIT) this.history.shift();
+
     const live = [...this.streams].filter((stream) => !stream.isClosed);
-    if (live.length === 0) {
-      // Hold a bounded backlog so a client that reconnects still learns about
-      // catalogue changes.
-      if (this.queued.length < 100) this.queued.push(notification);
-      return;
-    }
-    for (const stream of live) stream.write(notification);
+    if (live.length === 0) return;
+    entry.delivered = true;
+    for (const stream of live) stream.write(message, entry.id);
   }
 
   async sendRequest(
@@ -145,7 +186,7 @@ export class DownstreamSession implements DownstreamSessionHandle {
       }, timeoutMs);
       this.pending.set(id, { resolve, reject, timer });
     });
-    for (const stream of this.streams) stream.write(request);
+    this.deliver(request);
     return result;
   }
 
