@@ -1,4 +1,5 @@
 export * from "./browser.js";
+export * from "./dpop-verifier.js";
 export * from "./gateway-fixture.js";
 export * from "./gateway-mcp-client.js";
 export * from "./http-fixture.js";

@@ -102,11 +102,13 @@ export class UpstreamSessionManager {
       fetcher: this.deps.fetcher,
       logger: this.deps.logger.child({ connectionId: connection.id }),
       metrics: this.deps.metrics,
-      authHeaders: () =>
-        this.deps.tokenManager.authorizationHeaders({
-          tenantId: connection.tenantId,
-          connectionId: connection.id,
-        }),
+      authHeaders: (request) =>
+        this.deps.tokenManager.authorizationHeaders(
+          { tenantId: connection.tenantId, connectionId: connection.id },
+          request,
+        ),
+      onDpopNonce: (nonce) =>
+        this.deps.tokenManager.rememberResourceNonce(connection.id, nonce),
       clientInfo: this.deps.clientInfo,
       clientCapabilities: this.deps.clientCapabilities,
       transportKind: server.transportType === "HTTP_SSE" ? "HTTP_SSE" : "STREAMABLE_HTTP",

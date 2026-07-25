@@ -4,6 +4,7 @@ import type {
   DiscoveredResource,
   DiscoveredTool,
   DownstreamSession,
+  DpopKeyRecord,
   McpServerRecord,
   OAuthClientRegistrationRecord,
   OAuthIssuerRecord,
@@ -246,6 +247,14 @@ CREATE TABLE IF NOT EXISTS preconfigured_oauth_clients (
   UNIQUE (tenant_id, issuer)
 );
 
+CREATE TABLE IF NOT EXISTS dpop_keys (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  private_key_encrypted TEXT NOT NULL,
+  public_jwk_json TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS distributed_locks (
   key TEXT PRIMARY KEY,
   owner TEXT NOT NULL,
@@ -273,6 +282,14 @@ export const membershipMapper: Mapper<TenantMembership> = {
   tenantId: text("tenant_id"),
   userId: text("user_id"),
   role: text("role"),
+  createdAt: num("created_at"),
+};
+
+export const dpopKeyMapper: Mapper<DpopKeyRecord> = {
+  id: text("id"),
+  tenantId: text("tenant_id"),
+  privateKeyEncrypted: text("private_key_encrypted"),
+  publicJwkJson: json("public_jwk_json"),
   createdAt: num("created_at"),
 };
 

@@ -3,6 +3,7 @@ import {
   type McpImplementation,
   type McpInitializeResult,
   type TransportType,
+  type UpstreamRequestTarget,
 } from "@umg/core";
 import type { Logger, MetricsRegistry } from "@umg/observability";
 import type { SafeFetcher } from "@umg/security";
@@ -16,7 +17,9 @@ export interface ProbeOptions {
   logger: Logger;
   metrics: MetricsRegistry;
   clientInfo: McpImplementation;
-  authHeaders?: () => Promise<Record<string, string>>;
+  authHeaders?: (request: UpstreamRequestTarget) => Promise<Record<string, string>>;
+  /** Called when the upstream demands a DPoP nonce, before the retry. */
+  onDpopNonce?: (nonce: string) => void;
   timeoutMs?: number;
 }
 
@@ -44,6 +47,7 @@ export async function probeMcpEndpoint(options: ProbeOptions): Promise<ProbeResu
       logger: options.logger,
       metrics: options.metrics,
       authHeaders: options.authHeaders ?? (async () => ({})),
+      ...(options.onDpopNonce === undefined ? {} : { onDpopNonce: options.onDpopNonce }),
       clientInfo: options.clientInfo,
       clientCapabilities: {},
       transportKind: transportType === "HTTP_SSE" ? "HTTP_SSE" : "STREAMABLE_HTTP",

@@ -5,6 +5,7 @@ export * from "./protocol-error.js";
 export * from "./discovery.js";
 export * from "./client-metadata.js";
 export * from "./client-assertion.js";
+export * from "./dpop.js";
 export * from "./token-client.js";
 export * from "./registration.js";
 export * from "./token-manager.js";

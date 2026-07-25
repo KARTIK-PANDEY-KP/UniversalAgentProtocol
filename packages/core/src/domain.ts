@@ -62,6 +62,18 @@ export interface TenantMembership {
   createdAt: number;
 }
 
+/**
+ * The private half of a DPoP key pair. One per connection, so a stolen token
+ * for one upstream cannot be replayed against another.
+ */
+export interface DpopKeyRecord {
+  id: string;
+  tenantId: string;
+  privateKeyEncrypted: string;
+  publicJwkJson: JsonObject;
+  createdAt: number;
+}
+
 export interface McpServerRecord {
   id: string;
   tenantId: string;

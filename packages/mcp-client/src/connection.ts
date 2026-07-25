@@ -22,6 +22,7 @@ import {
   type McpTool,
   type McpToolResult,
   type RequestId,
+  type UpstreamRequestTarget,
 } from "@umg/core";
 import { Metric, type Logger, type MetricsRegistry } from "@umg/observability";
 import type { SafeFetcher } from "@umg/security";
@@ -48,7 +49,9 @@ export interface UpstreamConnectionOptions {
   fetcher: SafeFetcher;
   logger: Logger;
   metrics: MetricsRegistry;
-  authHeaders: () => Promise<Record<string, string>>;
+  authHeaders: (request: UpstreamRequestTarget) => Promise<Record<string, string>>;
+  /** Called when the upstream demands a DPoP nonce, before the retry. */
+  onDpopNonce?: (nonce: string) => void;
   clientInfo: McpImplementation;
   clientCapabilities: McpClientCapabilities;
   hooks?: TransportHooks;
@@ -319,6 +322,7 @@ export class UpstreamMcpConnection {
       logger: this.options.logger,
       hooks,
       authHeaders: this.options.authHeaders,
+      ...(this.options.onDpopNonce ? { onDpopNonce: this.options.onDpopNonce } : {}),
       ...(this.options.requestTimeoutMs === undefined
         ? {}
         : { requestTimeoutMs: this.options.requestTimeoutMs }),

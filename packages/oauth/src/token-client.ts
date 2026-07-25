@@ -11,6 +11,7 @@ import {
 import type { SafeFetcher, SigningKey } from "@umg/security";
 
 import { CLIENT_ASSERTION_TYPE, createClientAssertion } from "./client-assertion.js";
+import { createDpopProof, type DpopKey } from "./dpop.js";
 import { OAuthProtocolError } from "./protocol-error.js";
 
 export interface ClientCredentials {
@@ -40,6 +41,8 @@ export interface CodeExchangeParams {
   codeVerifier: string;
   redirectUri: string;
   resource?: string | null;
+  /** Binds the issued token to this key when the server supports DPoP. */
+  dpopKey?: DpopKey | null;
 }
 
 export interface RefreshParams {
@@ -48,6 +51,7 @@ export interface RefreshParams {
   refreshToken: string;
   scopes?: readonly string[];
   resource?: string | null;
+  dpopKey?: DpopKey | null;
 }
 
 export interface RevokeParams {
@@ -67,7 +71,22 @@ export interface NormalizedTokenSet {
   raw: OAuthTokenResponse;
 }
 
+function parseJson(text: string): unknown {
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return undefined;
+  }
+}
+
+function isDpopNonceError(payload: unknown): boolean {
+  return isRecord(payload) && payload["error"] === "use_dpop_nonce";
+}
+
 export class OAuthTokenClient {
+  /** Latest DPoP nonce each token endpoint asked for, keyed by endpoint. */
+  private readonly tokenNonces = new Map<string, string>();
+
   constructor(
     private readonly fetcher: SafeFetcher,
     private readonly clock: Clock,
@@ -106,7 +125,7 @@ export class OAuthTokenClient {
       redirect_uri: params.redirectUri,
     });
     if (params.resource) body.set("resource", params.resource);
-    return this.postToken(params.metadata, params.credentials, body);
+    return this.postToken(params.metadata, params.credentials, body, params.dpopKey);
   }
 
   async refresh(params: RefreshParams): Promise<NormalizedTokenSet> {
@@ -118,7 +137,7 @@ export class OAuthTokenClient {
       body.set("scope", formatScopes(params.scopes));
     }
     if (params.resource) body.set("resource", params.resource);
-    return this.postToken(params.metadata, params.credentials, body);
+    return this.postToken(params.metadata, params.credentials, body, params.dpopKey);
   }
 
   async revoke(params: RevokeParams): Promise<void> {
@@ -148,42 +167,74 @@ export class OAuthTokenClient {
     metadata: AuthorizationServerMetadata,
     credentials: ClientCredentials,
     body: URLSearchParams,
+    dpopKey?: DpopKey | null,
   ): Promise<NormalizedTokenSet> {
     const endpoint = metadata.token_endpoint;
     if (!endpoint) {
       throw new GatewayError("DISCOVERY_FAILED", "Authorization server has no token endpoint");
     }
     const headers = this.applyClientAuthentication(credentials, body, endpoint);
-    const response = await this.fetcher.request({
-      url: endpoint,
-      method: "POST",
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-        accept: "application/json",
-        ...headers,
-      },
-      body: body.toString(),
-      followRedirects: false,
+
+    // A server may refuse the first proof and hand back a nonce it wants
+    // echoed. That is one prescribed round trip, not an error, so it is
+    // retried once rather than surfaced.
+    let nonce = dpopKey ? this.tokenNonces.get(endpoint) : undefined;
+    for (let attempt = 0; ; attempt += 1) {
+      const response = await this.fetcher.request({
+        url: endpoint,
+        method: "POST",
+        headers: {
+          "content-type": "application/x-www-form-urlencoded",
+          accept: "application/json",
+          ...headers,
+          ...(dpopKey
+            ? { dpop: this.proof(dpopKey, "POST", endpoint, nonce, undefined) }
+            : {}),
+        },
+        body: body.toString(),
+        followRedirects: false,
+      });
+
+      const text = await response.text();
+      const payload = parseJson(text);
+
+      if (response.status < 200 || response.status >= 300) {
+        const issued = response.headers["dpop-nonce"];
+        if (dpopKey && attempt === 0 && issued && isDpopNonceError(payload)) {
+          this.tokenNonces.set(endpoint, issued);
+          nonce = issued;
+          continue;
+        }
+        throw OAuthProtocolError.fromBody(response.status, payload, "invalid_request");
+      }
+      const issued = response.headers["dpop-nonce"];
+      if (dpopKey && issued) this.tokenNonces.set(endpoint, issued);
+
+      if (!isRecord(payload) || typeof payload["access_token"] !== "string") {
+        throw new GatewayError(
+          "TOKEN_EXCHANGE_FAILED",
+          "Token endpoint returned a response without an access token",
+        );
+      }
+      return this.normalize(payload as unknown as OAuthTokenResponse);
+    }
+  }
+
+  private proof(
+    key: DpopKey,
+    method: string,
+    url: string,
+    nonce: string | undefined,
+    accessToken: string | undefined,
+  ): string {
+    return createDpopProof({
+      key,
+      htm: method,
+      htu: url,
+      nowSeconds: Math.floor(this.clock.now() / 1000),
+      nonce,
+      accessToken,
     });
-
-    const text = await response.text();
-    let payload: unknown;
-    try {
-      payload = JSON.parse(text) as unknown;
-    } catch {
-      payload = undefined;
-    }
-
-    if (response.status < 200 || response.status >= 300) {
-      throw OAuthProtocolError.fromBody(response.status, payload, "invalid_request");
-    }
-    if (!isRecord(payload) || typeof payload["access_token"] !== "string") {
-      throw new GatewayError(
-        "TOKEN_EXCHANGE_FAILED",
-        "Token endpoint returned a response without an access token",
-      );
-    }
-    return this.normalize(payload as unknown as OAuthTokenResponse);
   }
 
   private normalize(raw: OAuthTokenResponse): NormalizedTokenSet {

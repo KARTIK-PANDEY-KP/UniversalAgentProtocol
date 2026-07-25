@@ -6,6 +6,7 @@ import {
   type JsonRpcNotification,
   type JsonRpcRequest,
   type JsonRpcResponse,
+  type UpstreamRequestTarget,
 } from "@umg/core";
 import type { Logger } from "@umg/observability";
 import type { SafeFetcher, SafeResponse } from "@umg/security";
@@ -25,7 +26,7 @@ export interface HttpSseOptions {
   fetcher: SafeFetcher;
   logger: Logger;
   hooks: TransportHooks;
-  authHeaders: () => Promise<Record<string, string>>;
+  authHeaders: (request: UpstreamRequestTarget) => Promise<Record<string, string>>;
   requestTimeoutMs?: number;
 }
 
@@ -102,7 +103,10 @@ export class HttpSseTransport implements McpTransport {
     const response = await this.options.fetcher.request({
       url: this.options.url,
       method: "GET",
-      headers: { ...(await this.options.authHeaders()), accept: "text/event-stream" },
+      headers: {
+        ...(await this.options.authHeaders({ method: "GET", url: this.options.url })),
+        accept: "text/event-stream",
+      },
       signal: controller.signal,
       stream: true,
       followRedirects: false,
@@ -216,7 +220,7 @@ export class HttpSseTransport implements McpTransport {
       url: this.postUrl,
       method: "POST",
       headers: {
-        ...(await this.options.authHeaders()),
+        ...(await this.options.authHeaders({ method: "POST", url: this.postUrl })),
         "content-type": "application/json",
         accept: "application/json, text/event-stream",
       },

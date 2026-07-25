@@ -9,9 +9,11 @@ import {
   uniqueStrings,
   type AuthorizationServerMetadata,
   type Clock,
+  type JsonObject,
   type OAuthIssuerRecord,
   type OAuthTransaction,
   type UpstreamConnection,
+  type UpstreamRequestTarget,
 } from "@umg/core";
 import { Metric, type Logger, type MetricsRegistry } from "@umg/observability";
 import {
@@ -22,6 +24,13 @@ import {
 import type { GatewayStore } from "@umg/storage";
 
 import type { GatewayIdentity } from "./client-metadata.js";
+import {
+  createDpopProof,
+  dpopKeyFromPem,
+  generateDpopKey,
+  supportsDpop,
+  type DpopKey,
+} from "./dpop.js";
 import { createPkcePair } from "./pkce.js";
 import { classifyTokenFailure, OAuthProtocolError } from "./protocol-error.js";
 import type { ResolvedClientRegistration } from "./registration.js";
@@ -98,6 +107,10 @@ export interface CallbackResult {
 
 export class OAuthTokenManager {
   private readonly breakers = new Map<string, CircuitBreaker>();
+  /** Decrypted DPoP keys, so a proof does not cost a decryption per request. */
+  private readonly dpopKeys = new Map<string, DpopKey>();
+  /** Latest nonce each upstream resource server demanded, keyed by connection. */
+  private readonly resourceNonces = new Map<string, string>();
 
   constructor(private readonly deps: TokenManagerDeps) {}
 
@@ -126,6 +139,10 @@ export class OAuthTokenManager {
       returnTo: request.returnTo ?? null,
     };
     await this.deps.store.transactions.create(transaction);
+
+    // The key has to exist before the code is exchanged, and it belongs to the
+    // connection rather than the transaction so a refresh can reuse it.
+    await this.ensureDpopKey(request.connectionId, request.tenantId, request.metadata);
 
     const authorizationUrl = this.deps.tokenClient.buildAuthorizationUrl({
       metadata: request.metadata,
@@ -235,6 +252,7 @@ export class OAuthTokenManager {
         codeVerifier: verifier,
         redirectUri: transaction.redirectUri,
         resource: transaction.resource,
+        dpopKey: await this.dpopKeyFor(connection),
       });
     } catch (error) {
       this.deps.metrics.counter(Metric.OauthAuthorizationFailed, {
@@ -312,8 +330,15 @@ export class OAuthTokenManager {
     );
   }
 
-  /** Headers to attach to an upstream MCP request for this connection. */
-  async authorizationHeaders(ref: ConnectionRef): Promise<Record<string, string>> {
+  /**
+   * Headers to attach to an upstream MCP request. A DPoP proof is bound to the
+   * method and URI of one request, so the caller has to say which request it
+   * is about to make.
+   */
+  async authorizationHeaders(
+    ref: ConnectionRef,
+    request: UpstreamRequestTarget,
+  ): Promise<Record<string, string>> {
     const connection = await this.requireConnection(ref);
     if (connection.staticHeadersEncrypted) {
       const raw = await this.deps.vault.decrypt(
@@ -324,7 +349,88 @@ export class OAuthTokenManager {
     }
     if (!connection.oauthIssuerId) return {};
     const token = await this.getValidAccessToken(ref);
-    return { authorization: `${connection.tokenType ?? "Bearer"} ${token}` };
+    const scheme = connection.tokenType ?? "Bearer";
+    if (scheme.toLowerCase() !== "dpop") {
+      return { authorization: `${scheme} ${token}` };
+    }
+
+    const key = await this.dpopKeyFor(connection);
+    if (!key) {
+      throw new GatewayError(
+        "INTERNAL",
+        "The upstream issued a DPoP token but the binding key is missing",
+      );
+    }
+    return {
+      authorization: `DPoP ${token}`,
+      dpop: createDpopProof({
+        key,
+        htm: request.method,
+        htu: request.url,
+        nowSeconds: Math.floor(this.deps.clock.now() / 1000),
+        nonce: this.resourceNonces.get(connection.id),
+        accessToken: token,
+      }),
+    };
+  }
+
+  /**
+   * Records a nonce a resource server demanded. RFC 9449 lets the server
+   * reject the first proof purely to hand one out, so the caller retries with
+   * this recorded and succeeds.
+   */
+  rememberResourceNonce(connectionId: string, nonce: string): void {
+    this.resourceNonces.set(connectionId, nonce);
+  }
+
+  /** Creates and stores a DPoP key when the server supports sender constraining. */
+  private async ensureDpopKey(
+    connectionId: string,
+    tenantId: string,
+    metadata: AuthorizationServerMetadata,
+  ): Promise<void> {
+    const connection = await this.deps.store.connections.getUnscoped(connectionId);
+    if (!connection) return;
+    if (!supportsDpop(metadata)) {
+      if (connection.dpopKeyReference) {
+        await this.deps.store.dpopKeys.delete(connection.dpopKeyReference);
+        await this.deps.store.connections.update(connectionId, { dpopKeyReference: null });
+      }
+      return;
+    }
+    if (connection.dpopKeyReference) return;
+
+    const { key, privateKeyPem } = generateDpopKey();
+    const record = await this.deps.store.dpopKeys.create({
+      id: newId("dpop"),
+      tenantId,
+      privateKeyEncrypted: await this.deps.vault.encrypt(
+        { tenantId, purpose: "dpop_key" },
+        privateKeyPem,
+      ),
+      publicJwkJson: key.publicJwk as JsonObject,
+      createdAt: this.deps.clock.now(),
+    });
+    await this.deps.store.connections.update(connectionId, {
+      dpopKeyReference: record.id,
+    });
+  }
+
+  private async dpopKeyFor(connection: UpstreamConnection): Promise<DpopKey | null> {
+    if (!connection.dpopKeyReference) return null;
+    const cached = this.dpopKeys.get(connection.dpopKeyReference);
+    if (cached) return cached;
+
+    const record = await this.deps.store.dpopKeys.get(connection.dpopKeyReference);
+    if (!record) return null;
+    const key = dpopKeyFromPem(
+      await this.deps.vault.decrypt(
+        { tenantId: record.tenantId, purpose: "dpop_key" },
+        record.privateKeyEncrypted,
+      ),
+    );
+    this.dpopKeys.set(record.id, key);
+    return key;
   }
 
   async revokeConnection(ref: ConnectionRef): Promise<void> {
@@ -397,6 +503,7 @@ export class OAuthTokenManager {
       connection.refreshTokenEncrypted ?? "",
     );
     const { metadata, credentials, resource } = await this.resolveClientContext(connection);
+    const dpopKey = await this.dpopKeyFor(connection);
 
     let attempt = 0;
     for (;;) {
@@ -406,6 +513,7 @@ export class OAuthTokenManager {
           credentials,
           refreshToken,
           resource,
+          dpopKey,
         });
         breaker.recordSuccess();
         this.deps.metrics.counter(Metric.OauthTokenRefresh, {});

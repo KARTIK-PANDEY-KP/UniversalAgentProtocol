@@ -376,11 +376,13 @@ export class ConnectionService {
       logger: this.deps.logger,
       metrics: this.deps.metrics,
       clientInfo: this.deps.clientInfo,
-      authHeaders: () =>
-        this.deps.tokenManager.authorizationHeaders({
-          tenantId: connection.tenantId,
-          connectionId: connection.id,
-        }),
+      authHeaders: (request) =>
+        this.deps.tokenManager.authorizationHeaders(
+          { tenantId: connection.tenantId, connectionId: connection.id },
+          request,
+        ),
+      onDpopNonce: (nonce) =>
+        this.deps.tokenManager.rememberResourceNonce(connection.id, nonce),
     }).catch(() => null);
     if (!probe?.initializeResult) return;
     await this.deps.store.mcpServers.update(server.tenantId, server.id, {

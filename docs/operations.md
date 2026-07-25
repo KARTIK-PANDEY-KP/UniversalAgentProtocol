@@ -30,7 +30,10 @@ All configuration is environment variables.
 | `PORT` | `8787` | Bind port |
 | `GATEWAY_DATABASE_FILE` | `:memory:` | SQLite path; set this or nothing survives a restart |
 | `GATEWAY_ENCRYPTION_KEYS` | generated | `kid:base64key[,kid:base64key]`, first entry active |
-| `GATEWAY_API_KEYS` | none | `key:tenantId:userId[:label]` entries, comma separated |
+| `GATEWAY_API_KEYS` | none | `key:tenantId:userId[:label[:role]]` entries, comma separated; the role defaults to `member` |
+| `GATEWAY_WRITE_ROLES` | none | Roles allowed to call anything other than a read-only tool; unset allows every role |
+| `GATEWAY_TOOL_CALLS_PER_MINUTE` | `600` | Tool calls a tenant may make per minute; `0` disables the limit |
+| `GATEWAY_API_REQUESTS_PER_MINUTE` | `300` | Control-plane requests a tenant may make per minute; `0` disables the limit |
 | `GATEWAY_ALLOWED_ORIGINS` | none | Origins permitted on the MCP endpoint |
 | `GATEWAY_AUTHORIZATION_SERVERS` | none | Issuers that mint tokens for the gateway itself |
 | `GATEWAY_SCOPES_SUPPORTED` | `mcp` | Scopes advertised in the gateway's protected resource metadata |
@@ -178,6 +181,29 @@ If the tools are present upstream but hidden downstream, check policy: a tool
 classified `DESTRUCTIVE` without a `destructiveHint` annotation is withheld by
 default. `GET /api/v1/tools` shows every discovered tool with its risk level
 and enabled flag, and `POST /api/v1/tools/:id` toggles one.
+
+### A tenant is being rate limited
+
+Tool calls and control-plane requests are metered per tenant with a token
+bucket that refills continuously, so a burst is absorbed but a sustained flood
+is not. A throttled caller gets HTTP 429 with `Retry-After`, or the JSON-RPC
+equivalent on the MCP endpoint, and the message says how long to wait.
+
+Both limits are per gateway process. Raise `GATEWAY_TOOL_CALLS_PER_MINUTE` or
+`GATEWAY_API_REQUESTS_PER_MINUTE` if the ceiling is genuinely too low, but a
+tenant hitting it usually means a client is retrying in a loop. Setting either
+to `0` disables that limit entirely.
+
+### A user cannot call a tool they can see
+
+Tools are listed according to what exists and called according to what the
+user may do, so a read-only member sees a write tool in the catalogue and is
+refused when calling it. That is deliberate: hiding it would make the refusal
+look like a broken catalogue.
+
+Roles come from `tenant_memberships`, seeded from the role field of
+`GATEWAY_API_KEYS`. `GATEWAY_WRITE_ROLES` names the roles that may call
+anything other than a read-only tool; leaving it unset allows every role.
 
 ### Rotating the encryption key
 

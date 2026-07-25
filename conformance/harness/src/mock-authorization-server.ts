@@ -16,6 +16,7 @@ import {
   redirect,
   type FixtureRequest,
 } from "./http-fixture.js";
+import { verifyDpopProof } from "./dpop-verifier.js";
 
 export interface RegisteredClient {
   clientId: string;
@@ -45,6 +46,10 @@ export interface MockAuthorizationServerOptions {
   fixedScopes?: string[] | null;
   requireResourceParameter?: boolean;
   supportsRevocation?: boolean;
+  /** Advertise DPoP and bind issued tokens to the proof key. */
+  supportsDpop?: boolean;
+  /** Refuse the first proof at each endpoint to hand out a nonce, as RFC 9449 allows. */
+  requireDpopNonce?: boolean;
   /** Serve discovery only at the OpenID Connect location. */
   discoveryStyle?: "oauth" | "openid";
   /** Extra members merged into the published metadata document. */
@@ -77,6 +82,8 @@ interface AccessTokenRecord {
   scopes: string[];
   resource: string | null;
   expiresAt: number;
+  /** JWK thumbprint the token is bound to, for a DPoP grant. */
+  confirmation: string | null;
 }
 
 export interface TokenFailureInjection {
@@ -115,6 +122,10 @@ export class MockAuthorizationServer {
   private readonly codes = new Map<string, AuthorizationCode>();
   private readonly grants = new Map<string, Grant>();
   private readonly accessTokens = new Map<string, AccessTokenRecord>();
+  /** Nonce this server last handed out per endpoint, when it demands one. */
+  private readonly issuedNonces = new Map<string, string>();
+  /** Proof identifiers already spent, so a replayed proof is caught. */
+  private readonly seenProofIds = new Set<string>();
   private readonly refreshIndex = new Map<string, string>();
   private failures: TokenFailureInjection | null = null;
   private tokenDelayMs = 0;
@@ -195,14 +206,23 @@ export class MockAuthorizationServer {
   introspect(
     token: string,
     now = Date.now(),
-  ): { active: boolean; scopes: string[]; resource: string | null } {
+  ): {
+    active: boolean;
+    scopes: string[];
+    resource: string | null;
+    confirmation: string | null;
+  } {
+    const inactive = { active: false, scopes: [], resource: null, confirmation: null };
     const record = this.accessTokens.get(token);
-    if (!record) return { active: false, scopes: [], resource: null };
+    if (!record) return inactive;
     const grant = this.grants.get(record.grantId);
-    if (!grant || grant.revoked || record.expiresAt <= now) {
-      return { active: false, scopes: [], resource: null };
-    }
-    return { active: true, scopes: record.scopes, resource: record.resource };
+    if (!grant || grant.revoked || record.expiresAt <= now) return inactive;
+    return {
+      active: true,
+      scopes: record.scopes,
+      resource: record.resource,
+      confirmation: record.confirmation,
+    };
   }
 
   /** Expires every issued access token without touching the refresh tokens. */
@@ -227,6 +247,9 @@ export class MockAuthorizationServer {
     if (this.options.supportsDcr) base["registration_endpoint"] = `${this.issuer}/register`;
     if (this.options.supportsRevocation !== false) {
       base["revocation_endpoint"] = `${this.issuer}/revoke`;
+    }
+    if (this.options.supportsDpop) {
+      base["dpop_signing_alg_values_supported"] = ["ES256"];
     }
     return { ...base, ...(this.options.metadataOverrides ?? {}) };
   }
@@ -339,15 +362,71 @@ export class MockAuthorizationServer {
       return;
     }
 
+    let confirmation: string | null = null;
+    if (this.options.supportsDpop) {
+      const outcome = this.checkProof(request, `${this.issuer}/token`, undefined);
+      if (outcome.kind === "nonce") {
+        json(
+          res,
+          400,
+          { error: "use_dpop_nonce" },
+          { "dpop-nonce": outcome.nonce },
+        );
+        return;
+      }
+      if (outcome.kind === "invalid") {
+        json(res, 400, { error: "invalid_dpop_proof", error_description: outcome.reason });
+        return;
+      }
+      confirmation = outcome.thumbprint;
+    }
+
     switch (body.get("grant_type")) {
       case "authorization_code":
-        this.exchangeCode(body, client, res);
+        this.exchangeCode(body, client, res, confirmation);
         return;
       case "refresh_token":
-        this.refresh(body, client, res);
+        this.refresh(body, client, res, confirmation);
         return;
       default:
         json(res, 400, { error: "unsupported_grant_type" });
+    }
+  }
+
+  /**
+   * Applies the server's DPoP policy to one request. The nonce dance is
+   * per-endpoint: the first proof is refused with a nonce, and the retry
+   * carrying it is accepted.
+   */
+  private checkProof(
+    request: FixtureRequest,
+    htu: string,
+    accessToken: string | undefined,
+  ):
+    | { kind: "ok"; thumbprint: string }
+    | { kind: "nonce"; nonce: string }
+    | { kind: "invalid"; reason: string } {
+    const proof = headerOf(request, "dpop");
+    const expectedNonce = this.issuedNonces.get(htu);
+    if (this.options.requireDpopNonce && expectedNonce === undefined) {
+      const nonce = `nonce_${randomUUID()}`;
+      this.issuedNonces.set(htu, nonce);
+      return { kind: "nonce", nonce };
+    }
+    try {
+      const verified = verifyDpopProof(proof, {
+        htm: request.method,
+        htu,
+        ...(accessToken === undefined ? {} : { accessToken }),
+        ...(expectedNonce === undefined ? {} : { nonce: expectedNonce }),
+      });
+      if (this.seenProofIds.has(verified.jti)) {
+        return { kind: "invalid", reason: "proof replayed" };
+      }
+      this.seenProofIds.add(verified.jti);
+      return { kind: "ok", thumbprint: verified.thumbprint };
+    } catch (error) {
+      return { kind: "invalid", reason: (error as Error).message };
     }
   }
 
@@ -355,6 +434,7 @@ export class MockAuthorizationServer {
     body: URLSearchParams,
     client: RegisteredClient,
     res: ServerResponse,
+    confirmation: string | null,
   ): void {
     const code = this.codes.get(body.get("code") ?? "");
     if (!code || code.clientId !== client.clientId) {
@@ -387,13 +467,14 @@ export class MockAuthorizationServer {
       revoked: false,
     };
     this.grants.set(grant.id, grant);
-    json(res, 200, this.issueTokens(grant));
+    json(res, 200, this.issueTokens(grant, confirmation));
   }
 
   private refresh(
     body: URLSearchParams,
     client: RegisteredClient,
     res: ServerResponse,
+    confirmation: string | null,
   ): void {
     const presented = body.get("refresh_token") ?? "";
     const grantId = this.refreshIndex.get(presented);
@@ -416,10 +497,13 @@ export class MockAuthorizationServer {
       return;
     }
     this.stats.refreshes += 1;
-    json(res, 200, this.issueTokens(grant));
+    json(res, 200, this.issueTokens(grant, confirmation));
   }
 
-  private issueTokens(grant: Grant): Record<string, unknown> {
+  private issueTokens(
+    grant: Grant,
+    confirmation: string | null = null,
+  ): Record<string, unknown> {
     const ttl = this.options.accessTokenTtlSeconds ?? DEFAULTS.accessTokenTtlSeconds;
     const accessToken = `at_${randomUUID()}`;
     this.accessTokens.set(accessToken, {
@@ -427,11 +511,14 @@ export class MockAuthorizationServer {
       scopes: grant.scopes,
       resource: grant.resource,
       expiresAt: Date.now() + ttl * 1000,
+      confirmation,
     });
 
     const payload: Record<string, unknown> = {
       access_token: accessToken,
-      token_type: "Bearer",
+      // A token bound to a key is useless without it, so the client is told to
+      // present it as DPoP rather than as a bearer token.
+      token_type: confirmation === null ? "Bearer" : "DPoP",
       expires_in: ttl,
       scope: grant.scopes.join(" "),
     };

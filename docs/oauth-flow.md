@@ -142,6 +142,53 @@ have refreshed it. The write is a compare-and-swap on `token_version`. When the
 server returns a rotated refresh token, the replacement is atomic: there is
 never a moment where both the old and the new refresh token are stored.
 
+## Sender-constrained tokens (DPoP)
+
+When an authorization server advertises `dpop_signing_alg_values_supported`
+containing `ES256`, the gateway generates a P-256 key pair for the connection
+before the authorization request and binds the grant to it. The private key is
+encrypted in the vault under its own purpose and never leaves the process
+decrypted; only the public JWK is stored in the clear.
+
+Every request the bound grant is used for — the code exchange, each refresh,
+and each upstream MCP call — carries a fresh `DPoP` proof JWT covering the
+method and URI of that one request. Requests carrying an access token also
+carry its `ath` hash, so a proof captured from one request cannot be attached
+to a different token.
+
+The token endpoint and the resource server may each refuse the first proof with
+`use_dpop_nonce` and a `DPoP-Nonce` header purely to hand out a nonce. That is
+one prescribed round trip, not a failure: the gateway records the nonce per
+endpoint and retries once with it. Nonces the resource server rotates mid-
+session are picked up the same way.
+
+The token type the server returns decides how the token is presented
+downstream of this decision: a bound token is sent as `Authorization: DPoP …`,
+an unbound one as `Bearer`. The gateway never guesses — a server that does not
+advertise DPoP gets bearer tokens, and a connection that already has a key
+drops it if the server stops advertising support.
+
+The binding key outlives the tokens minted with it, so a refresh does not
+invalidate proofs already in flight.
+
+*Verified by* `conformance/tests/dpop.test.ts`, which includes replaying a
+bound token as a bearer token and confirming the resource server refuses it.
+
+## Widening a grant
+
+An upstream may refuse one tool while happily serving another, because the
+token is missing a scope that tool needs. RFC 6750 spells this as a `403` with
+`WWW-Authenticate: Bearer error="insufficient_scope", scope="…"`; some servers
+take the shortcut of failing the JSON-RPC call and naming the error in the
+message. The gateway reads both.
+
+The response is not to retry and not to silently drop the grant it already has.
+The union of the currently granted scopes and the newly required ones is
+recorded on the connection as the scopes to request next, the connection moves
+to `REAUTH_REQUIRED`, and the caller receives a reconnect prompt. The existing
+grant is left untouched until the user completes the wider authorization, so
+tools that worked before keep working in the meantime.
+
 ## Failure handling
 
 **`invalid_grant`** means the grant is gone: revoked, expired, or a rotation

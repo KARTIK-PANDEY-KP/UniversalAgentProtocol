@@ -5,6 +5,7 @@ import type {
   DiscoveredResource,
   DiscoveredTool,
   DownstreamSession,
+  DpopKeyRecord,
   McpServerRecord,
   OAuthClientRegistrationRecord,
   OAuthIssuerRecord,
@@ -54,6 +55,12 @@ export interface MembershipRepository {
   upsert(membership: TenantMembership): Promise<TenantMembership>;
   get(tenantId: string, userId: string): Promise<TenantMembership | null>;
   listByTenant(tenantId: string): Promise<TenantMembership[]>;
+}
+
+export interface DpopKeyRepository {
+  create(record: DpopKeyRecord): Promise<DpopKeyRecord>;
+  get(id: string): Promise<DpopKeyRecord | null>;
+  delete(id: string): Promise<void>;
 }
 
 export interface McpServerRepository {
@@ -203,6 +210,7 @@ export interface GatewayStore {
   readonly tenants: TenantRepository;
   readonly users: UserRepository;
   readonly memberships: MembershipRepository;
+  readonly dpopKeys: DpopKeyRepository;
   readonly mcpServers: McpServerRepository;
   readonly issuers: OAuthIssuerRepository;
   readonly registrations: ClientRegistrationRepository;

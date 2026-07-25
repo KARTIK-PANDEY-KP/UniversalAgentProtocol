@@ -23,7 +23,8 @@ export type CredentialPurpose =
   | "upstream_session_id"
   | "static_headers"
   | "gateway_api_key"
-  | "signing_key";
+  | "signing_key"
+  | "dpop_key";
 
 export interface EncryptionContext {
   tenantId: string;

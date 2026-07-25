@@ -10,6 +10,7 @@ import {
   type DiscoveredResource,
   type DiscoveredTool,
   type DownstreamSession,
+  type DpopKeyRecord,
   type McpServerRecord,
   type OAuthClientRegistrationRecord,
   type OAuthIssuerRecord,
@@ -28,6 +29,7 @@ import {
   auditMapper,
   connectionMapper,
   downstreamSessionMapper,
+  dpopKeyMapper,
   issuerMapper,
   mcpServerMapper,
   membershipMapper,
@@ -50,6 +52,7 @@ import type {
   GatewayStore,
   McpServerRepository,
   MembershipRepository,
+  DpopKeyRepository,
   OAuthIssuerRepository,
   PreconfiguredClientRepository,
   PromptRepository,
@@ -137,6 +140,7 @@ export class SqliteGatewayStore implements GatewayStore {
   readonly tenants: TenantRepository;
   readonly users: UserRepository;
   readonly memberships: MembershipRepository;
+  readonly dpopKeys: DpopKeyRepository;
   readonly mcpServers: McpServerRepository;
   readonly issuers: OAuthIssuerRepository;
   readonly registrations: ClientRegistrationRepository;
@@ -165,6 +169,7 @@ export class SqliteGatewayStore implements GatewayStore {
       "tenant_memberships",
       membershipMapper,
     );
+    const dpopKeyTable = new Table<DpopKeyRecord>(this.db, "dpop_keys", dpopKeyMapper);
     const serverTable = new Table<McpServerRecord>(this.db, "mcp_servers", mcpServerMapper);
     const issuerTable = new Table<OAuthIssuerRecord>(this.db, "oauth_issuers", issuerMapper);
     const registrationTable = new Table<OAuthClientRegistrationRecord>(
@@ -242,6 +247,14 @@ export class SqliteGatewayStore implements GatewayStore {
         membershipTable.findOne({ tenant_id: tenantId, user_id: userId }),
       listByTenant: async (tenantId) =>
         membershipTable.findMany({ tenant_id: tenantId }, "created_at"),
+    };
+
+    this.dpopKeys = {
+      create: async (record) => dpopKeyTable.insert(record),
+      get: async (id) => dpopKeyTable.findOne({ id }),
+      delete: async (id) => {
+        dpopKeyTable.delete({ id });
+      },
     };
 
     this.mcpServers = {

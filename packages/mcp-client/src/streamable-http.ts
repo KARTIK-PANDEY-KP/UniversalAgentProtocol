@@ -9,6 +9,7 @@ import {
   type JsonRpcNotification,
   type JsonRpcRequest,
   type JsonRpcResponse,
+  type UpstreamRequestTarget,
 } from "@umg/core";
 import type { Logger } from "@umg/observability";
 import type { SafeFetcher, SafeResponse } from "@umg/security";
@@ -29,7 +30,9 @@ export interface StreamableHttpOptions {
   logger: Logger;
   hooks: TransportHooks;
   /** Resolved per request so a refreshed access token is picked up promptly. */
-  authHeaders: () => Promise<Record<string, string>>;
+  authHeaders: (request: UpstreamRequestTarget) => Promise<Record<string, string>>;
+  /** Called when the upstream demands a DPoP nonce, before the retry. */
+  onDpopNonce?: (nonce: string) => void;
   requestTimeoutMs?: number;
   maxResponseBytes?: number;
 }
@@ -102,7 +105,7 @@ export class StreamableHttpTransport implements McpTransport {
     if (this.serverStream || this.closed) return;
     const controller = new AbortController();
     this.serverStream = controller;
-    const headers = await this.buildHeaders({ accept: SSE_CONTENT_TYPE });
+    const headers = await this.buildHeaders("GET", { accept: SSE_CONTENT_TYPE });
     let response: SafeResponse;
     try {
       response = await this.options.fetcher.request({
@@ -145,7 +148,7 @@ export class StreamableHttpTransport implements McpTransport {
     this.serverStream = null;
     if (!this.session) return;
     try {
-      const headers = await this.buildHeaders({ accept: JSON_CONTENT_TYPE });
+      const headers = await this.buildHeaders("DELETE", { accept: JSON_CONTENT_TYPE });
       const response = await this.options.fetcher.request({
         url: this.options.url,
         method: "DELETE",
@@ -165,8 +168,9 @@ export class StreamableHttpTransport implements McpTransport {
   private async post(
     message: JsonRpcRequest | JsonRpcNotification | JsonRpcResponse,
     options: SendOptions,
+    retriedWithNonce = false,
   ): Promise<SafeResponse> {
-    const headers = await this.buildHeaders({
+    const headers = await this.buildHeaders("POST", {
       accept: `${JSON_CONTENT_TYPE}, ${SSE_CONTENT_TYPE}`,
       "content-type": JSON_CONTENT_TYPE,
     });
@@ -190,6 +194,15 @@ export class StreamableHttpTransport implements McpTransport {
 
     if (response.status === 401 || response.status === 403) {
       const challenge = response.headers["www-authenticate"];
+      // A DPoP resource server may refuse the first proof purely to hand out a
+      // nonce it wants echoed. That is one prescribed round trip, so it is
+      // retried once with the nonce recorded rather than reported as a failure.
+      const nonce = response.headers["dpop-nonce"];
+      if (nonce && !retriedWithNonce) {
+        response.discard();
+        this.options.onDpopNonce?.(nonce);
+        return this.post(message, options, true);
+      }
       response.discard();
       throw new McpUnauthorizedError(
         "The upstream MCP server requires authorization",
@@ -273,10 +286,11 @@ export class StreamableHttpTransport implements McpTransport {
   }
 
   private async buildHeaders(
+    method: string,
     extra: Record<string, string>,
   ): Promise<Record<string, string>> {
     const headers: Record<string, string> = {
-      ...(await this.options.authHeaders()),
+      ...(await this.options.authHeaders({ method, url: this.options.url })),
       ...extra,
     };
     if (this.session) headers[MCP_SESSION_HEADER] = this.session;

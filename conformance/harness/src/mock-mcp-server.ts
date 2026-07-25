@@ -21,6 +21,7 @@ import {
   json,
   type FixtureRequest,
 } from "./http-fixture.js";
+import { verifyDpopProof } from "./dpop-verifier.js";
 
 export interface ToolCallHooks {
   /** Emits a progress notification on the stream carrying this call. */
@@ -59,6 +60,8 @@ export interface TokenIntrospection {
   active: boolean;
   scopes: string[];
   resource: string | null;
+  /** JWK thumbprint the token is bound to, for a DPoP grant. */
+  confirmation?: string | null;
 }
 
 export interface MockMcpServerOptions {
@@ -76,6 +79,8 @@ export interface MockMcpServerOptions {
   tools?: MockToolDefinition[];
   resources?: MockResourceDefinition[];
   prompts?: MockPromptDefinition[];
+  /** Refuse the first DPoP proof to hand out a nonce, as RFC 9449 allows. */
+  requireDpopNonce?: boolean;
   /** Include `resource_metadata` in the 401 challenge. */
   advertiseResourceMetadata?: boolean;
   /** Serve protected resource metadata that a test can corrupt. */
@@ -120,6 +125,9 @@ export class MockMcpServer {
   private prompts: MockPromptDefinition[];
   private nextServerRequestId = 1;
   private failuresRemaining = 0;
+  /** Nonce this server last handed out per endpoint, when it demands one. */
+  private readonly issuedNonces = new Map<string, string>();
+  private nextNonce = 1;
   private failureStatus = 500;
 
   readonly stats: McpServerStats = {
@@ -259,6 +267,15 @@ export class MockMcpServer {
       this.sendChallenge(res);
       return;
     }
+    // A token bound to a key is only good when the matching proof arrives with
+    // it, otherwise anyone who stole the token could use it.
+    if (introspection.confirmation) {
+      const refusal = this.checkProof(request, authorization ?? "", introspection.confirmation);
+      if (refusal) {
+        json(res, 401, { error: refusal.error }, refusal.headers);
+        return;
+      }
+    }
 
     if ((this.options.transport ?? "STREAMABLE_HTTP") === "HTTP_SSE") {
       await this.routeLegacy(request, res, introspection);
@@ -271,14 +288,59 @@ export class MockMcpServer {
     if (this.options.requireAuth !== true) {
       return { active: true, scopes: [], resource: null };
     }
-    if (!authorization?.toLowerCase().startsWith("bearer ")) return null;
-    const token = authorization.slice(7).trim();
+    const scheme = authorization?.split(" ")[0]?.toLowerCase();
+    if (scheme !== "bearer" && scheme !== "dpop") return null;
+    const token = (authorization ?? "").slice(scheme.length).trim();
     const introspection = this.options.introspect?.(token) ?? {
       active: token.length > 0,
       scopes: [],
       resource: null,
     };
     return introspection.active ? introspection : null;
+  }
+
+  /**
+   * Verifies the DPoP proof presented with a bound token. Returns the refusal
+   * to send, or null when the proof is good.
+   */
+  private checkProof(
+    request: FixtureRequest,
+    authorization: string,
+    confirmation: string,
+  ): { error: string; headers: Record<string, string> } | null {
+    const htu = `${this.fixture.baseUrl}${request.url.pathname}`;
+    const expectedNonce = this.issuedNonces.get(htu);
+    if (this.options.requireDpopNonce && expectedNonce === undefined) {
+      const nonce = `nonce_${this.nextNonce++}`;
+      this.issuedNonces.set(htu, nonce);
+      return {
+        error: "use_dpop_nonce",
+        headers: {
+          "dpop-nonce": nonce,
+          "www-authenticate": 'DPoP error="use_dpop_nonce"',
+        },
+      };
+    }
+    try {
+      const verified = verifyDpopProof(headerOf(request, "dpop"), {
+        htm: request.method,
+        htu,
+        accessToken: authorization.split(" ")[1] ?? "",
+        ...(expectedNonce === undefined ? {} : { nonce: expectedNonce }),
+      });
+      if (verified.thumbprint !== confirmation) {
+        return {
+          error: "invalid_token",
+          headers: { "www-authenticate": 'DPoP error="invalid_token"' },
+        };
+      }
+      return null;
+    } catch {
+      return {
+        error: "invalid_dpop_proof",
+        headers: { "www-authenticate": 'DPoP error="invalid_dpop_proof"' },
+      };
+    }
   }
 
   /** The scope a batch of requests needs but the token does not carry. */

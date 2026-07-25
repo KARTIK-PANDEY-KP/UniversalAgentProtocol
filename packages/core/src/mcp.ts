@@ -20,6 +20,16 @@ export const LATEST_PROTOCOL_VERSION: ProtocolVersion =
 export const MCP_SESSION_HEADER = "mcp-session-id";
 export const MCP_PROTOCOL_VERSION_HEADER = "mcp-protocol-version";
 
+/**
+ * The request authorization headers are being built for. Bearer tokens ignore
+ * it; a DPoP proof is bound to exactly one method and URI, so the transport
+ * has to say what it is about to send.
+ */
+export interface UpstreamRequestTarget {
+  method: string;
+  url: string;
+}
+
 export function negotiateProtocolVersion(requested: string): ProtocolVersion {
   const supported = SUPPORTED_PROTOCOL_VERSIONS as readonly string[];
   return supported.includes(requested)
