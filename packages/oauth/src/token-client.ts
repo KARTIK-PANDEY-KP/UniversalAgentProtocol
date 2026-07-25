@@ -7,8 +7,8 @@ import {
   type Clock,
   type OAuthTokenResponse,
   type TokenEndpointAuthMethod,
-} from "@umg/core";
-import type { SafeFetcher, SigningKey } from "@umg/security";
+} from "@uap/core";
+import type { SafeFetcher, SigningKey } from "@uap/security";
 
 import { CLIENT_ASSERTION_TYPE, createClientAssertion } from "./client-assertion.js";
 import { createDpopProof, type DpopKey } from "./dpop.js";

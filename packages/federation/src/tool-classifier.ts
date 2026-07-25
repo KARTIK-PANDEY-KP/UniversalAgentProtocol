@@ -1,4 +1,4 @@
-import { isRecord, type JsonObject, type ToolRiskLevel } from "@umg/core";
+import { isRecord, type JsonObject, type ToolRiskLevel } from "@uap/core";
 
 const PATTERNS: { level: ToolRiskLevel; pattern: RegExp }[] = [
   {

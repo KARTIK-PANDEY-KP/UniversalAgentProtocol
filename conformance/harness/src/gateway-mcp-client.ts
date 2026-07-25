@@ -10,7 +10,7 @@ import {
   type McpImplementation,
   type McpTool,
   type RequestId,
-} from "@umg/core";
+} from "@uap/core";
 
 import { readSse } from "./sse-reader.js";
 

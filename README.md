@@ -1,4 +1,17 @@
-# Universal MCP OAuth Gateway
+# Universal Agent Protocol
+
+An agent is more than a model: it is the tools it can reach, the credentials it
+holds, the skills it has been taught and the rules it works under. Today each
+of those is re-solved from scratch inside every application, so an agent's
+abilities are trapped in whichever product configured them. UAP is the project
+for making them portable — defined once, carried between applications.
+
+The first piece is the hard one, and it is what this repository ships now:
+**connections**. Everything else an agent gains is worthless if it cannot
+authenticate as you, and today authenticating means every application repeating
+every OAuth flow and holding a copy of every credential.
+
+## Connections: the gateway
 
 Connect each remote MCP server once, through the gateway. Then use that
 connection from Cursor, Claude Code, Codex, cloud agents and any other
@@ -96,7 +109,7 @@ answering the same questions for itself.
 | `packages/gateway` | Composition root, HTTP routes, background worker |
 | `apps/gateway-api` | The gateway process |
 | `apps/background-worker` | Token renewal, catalogue resync, reaping, key rewrap |
-| `apps/migration-cli` | `umg-migrate`: discover, import, install, prune, rollback |
+| `apps/migration-cli` | `uap-migrate`: discover, import, install, prune, rollback |
 | `conformance/harness` | Mock authorization server, mock MCP server, gateway fixture |
 | `conformance/tests` | The test matrix from section 19 of the brief |
 | `interop` | Manual rig: the gateway against real SDKs, a real OAuth provider and live servers |

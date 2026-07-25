@@ -101,7 +101,7 @@ file.
 | Codex | `~/.codex/config.toml`, `.codex/config.toml` | `bearer_token_env_var` |
 | VS Code | `.vscode/mcp.json` | `${env:NAME}` in `headers` |
 
-Claude Desktop cannot dereference an environment variable, so `umg-migrate
+Claude Desktop cannot dereference an environment variable, so `uap-migrate
 install` skips it unless `--inline-key` is passed, which writes the gateway key
 into the file in plain text.
 

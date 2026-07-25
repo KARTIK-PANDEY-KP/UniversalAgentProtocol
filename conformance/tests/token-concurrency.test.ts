@@ -5,7 +5,7 @@ import {
   GatewayMcpClient,
   connectUpstream,
   startProtectedUpstream,
-} from "@umg/conformance";
+} from "@uap/conformance";
 
 /**
  * Section 19.4: the gateway is the sole owner of the upstream refresh token,

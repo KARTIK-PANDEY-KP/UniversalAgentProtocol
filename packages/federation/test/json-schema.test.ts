@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { validateAgainstSchema } from "@umg/federation";
+import { validateAgainstSchema } from "@uap/federation";
 
 describe("schema validation", () => {
   it("enforces a pattern it understands", () => {

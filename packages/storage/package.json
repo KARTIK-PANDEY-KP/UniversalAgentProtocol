@@ -1,5 +1,5 @@
 {
-  "name": "@umg/storage",
+  "name": "@uap/storage",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -12,7 +12,7 @@
     }
   },
   "dependencies": {
-    "@umg/core": "workspace:*",
-    "@umg/security": "workspace:*"
+    "@uap/core": "workspace:*",
+    "@uap/security": "workspace:*"
   }
 }

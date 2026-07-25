@@ -11,16 +11,16 @@ belongs to the module with the business reason.
 
 ## Does not own
 
-- OAuth. `@umg/oauth` owns the protocol; this module owns the vault it stores
+- OAuth. `@uap/oauth` owns the protocol; this module owns the vault it stores
   tokens in and the fetch it makes them over.
-- Authentication or authorization decisions. `@umg/oauth` verifies tokens and
-  `@umg/federation` applies policy.
+- Authentication or authorization decisions. `@uap/oauth` verifies tokens and
+  `@uap/federation` applies policy.
 - Rate-limit budgets. This module implements the token bucket; the caller
   chooses the numbers.
 
 ## Public interface
 
-`@umg/security`, from `src/index.ts`.
+`@uap/security`, from `src/index.ts`.
 
 - `safe-fetch.ts` — the only outbound HTTP client. Resolves DNS, rejects
   addresses outside the public internet, re-checks after every redirect, and
@@ -38,13 +38,13 @@ belongs to the module with the business reason.
 
 ## Depends on
 
-- `@umg/core`
-- `@umg/observability`
+- `@uap/core`
+- `@uap/observability`
 
 ## Data ownership
 
 No tables of its own. It reads and writes `dpop_keys` and `distributed_locks`
-through repository interfaces that `@umg/storage` owns and implements; the
+through repository interfaces that `@uap/storage` owns and implements; the
 schema for those tables lives there.
 
 ## Entry points
@@ -70,7 +70,7 @@ schema for those tables lives there.
 ## Testing
 
 ```bash
-pnpm --filter @umg/security test
+pnpm --filter @uap/security test
 ```
 
 ## Owners

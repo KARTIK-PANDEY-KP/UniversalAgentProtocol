@@ -23,9 +23,9 @@ import {
   type McpToolResult,
   type RequestId,
   type UpstreamRequestTarget,
-} from "@umg/core";
-import { Metric, type Logger, type MetricsRegistry } from "@umg/observability";
-import type { SafeFetcher } from "@umg/security";
+} from "@uap/core";
+import { Metric, type Logger, type MetricsRegistry } from "@uap/observability";
+import type { SafeFetcher } from "@uap/security";
 
 import { HttpSseTransport } from "./legacy-sse.js";
 import { StreamableHttpTransport } from "./streamable-http.js";

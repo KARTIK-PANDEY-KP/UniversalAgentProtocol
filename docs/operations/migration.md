@@ -22,12 +22,12 @@ authorization.
 export GATEWAY_URL=https://gateway.example.com
 export GATEWAY_API_KEY=...
 
-umg-migrate discover     # what you have today
-umg-migrate import       # create one gateway connection per server
-umg-migrate status       # who still needs authorizing
-umg-migrate install      # point your applications at the gateway
-umg-migrate prune --yes  # optional: remove the direct entries
-umg-migrate rollback     # undo the last install or prune
+uap-migrate discover     # what you have today
+uap-migrate import       # create one gateway connection per server
+uap-migrate status       # who still needs authorizing
+uap-migrate install      # point your applications at the gateway
+uap-migrate prune --yes  # optional: remove the direct entries
+uap-migrate rollback     # undo the last install or prune
 ```
 
 During development, run it as `node apps/migration-cli/dist/main.js`.
@@ -83,7 +83,7 @@ Authorize each protected server once, in a browser:
 Open each one, approve, done. Servers that need no authorization are connected
 immediately and their tools are already available.
 
-`umg-migrate status` shows where things stand, and `--fail-on-pending` makes it
+`uap-migrate status` shows where things stand, and `--fail-on-pending` makes it
 exit non-zero while anything is still unauthorized, which is convenient in a
 script.
 
@@ -97,7 +97,7 @@ Adds the gateway to each client's configuration as a normal remote MCP server:
     "universal-gateway": {
       "type": "http",
       "url": "https://gateway.example.com/mcp",
-      "headers": { "Authorization": "Bearer ${env:UMG_GATEWAY_API_KEY}" }
+      "headers": { "Authorization": "Bearer ${env:UAP_GATEWAY_API_KEY}" }
     }
   }
 }
@@ -108,7 +108,7 @@ using each client's own syntax. Set it in your shell profile before starting
 the application:
 
 ```bash
-export UMG_GATEWAY_API_KEY=...
+export UAP_GATEWAY_API_KEY=...
 ```
 
 Use `--api-key-env` to change the variable name.
@@ -144,10 +144,10 @@ before. Local stdio servers and the gateway's own entry are never touched.
 ## rollback
 
 Every `install` and `prune` copies each file it is about to change into
-`~/.universal-mcp-gateway/backups/<id>/` and writes a manifest. `rollback`
+`~/.uap/backups/<id>/` and writes a manifest. `rollback`
 restores the most recent one — including deleting a file the CLI created,
 rather than leaving an empty one behind — and then discards it, so repeated
-rollbacks walk back through the history. `umg-migrate backups` lists what is
+rollbacks walk back through the history. `uap-migrate backups` lists what is
 available and `--backup-id` picks a specific one.
 
 Rolling back client configuration does not touch the gateway. The connections

@@ -4,8 +4,8 @@ import { request as httpsRequest } from "node:https";
 import type { LookupFunction } from "node:net";
 import type { Readable } from "node:stream";
 
-import { GatewayError, clampText } from "@umg/core";
-import { Metric, type MetricsRegistry } from "@umg/observability";
+import { GatewayError, clampText } from "@uap/core";
+import { Metric, type MetricsRegistry } from "@uap/observability";
 
 import { classifyAddress, literalAddressOf, type IpDisposition } from "./ip-rules.js";
 import { parseAbsoluteUrl } from "./url.js";

@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 
-import { GatewayError } from "@umg/core";
+import { GatewayError } from "@uap/core";
 
 import {
   fromRow,

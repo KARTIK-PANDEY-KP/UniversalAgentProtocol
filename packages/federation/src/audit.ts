@@ -5,9 +5,9 @@ import {
   type AuditEvent,
   type Clock,
   type JsonObject,
-} from "@umg/core";
-import type { Logger } from "@umg/observability";
-import type { GatewayStore } from "@umg/storage";
+} from "@uap/core";
+import type { Logger } from "@uap/observability";
+import type { GatewayStore } from "@uap/storage";
 
 export interface AuditInput {
   tenantId: string;

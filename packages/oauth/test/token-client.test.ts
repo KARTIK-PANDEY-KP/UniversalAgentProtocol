@@ -2,10 +2,10 @@ import { Readable } from "node:stream";
 
 import { describe, expect, it } from "vitest";
 
-import { GatewayError, systemClock, type AuthorizationServerMetadata } from "@umg/core";
-import type { SafeFetcher, SafeRequestOptions, SafeResponse } from "@umg/security";
+import { GatewayError, systemClock, type AuthorizationServerMetadata } from "@uap/core";
+import type { SafeFetcher, SafeRequestOptions, SafeResponse } from "@uap/security";
 
-import { OAuthProtocolError, OAuthTokenClient } from "@umg/oauth";
+import { OAuthProtocolError, OAuthTokenClient } from "@uap/oauth";
 
 const METADATA: AuthorizationServerMetadata = {
   issuer: "https://as.example.com",

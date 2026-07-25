@@ -1,8 +1,8 @@
 import { createServer } from "node:net";
 import type { AddressInfo } from "node:net";
 
-import { Gateway, type GatewayConfig } from "@umg/gateway";
-import { silentSink, type LogSink } from "@umg/observability";
+import { Gateway, type GatewayConfig } from "@uap/gateway";
+import { silentSink, type LogSink } from "@uap/observability";
 
 export interface GatewayFixtureOptions {
   apiKey?: string;

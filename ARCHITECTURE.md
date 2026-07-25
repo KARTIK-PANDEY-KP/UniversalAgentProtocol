@@ -86,7 +86,7 @@ every branch has to edit.
 ### 2. A module has exactly one public interface
 
 `src/index.ts`, published as the sole `.` export. Other modules import
-`@umg/oauth`. They do not import `@umg/oauth/dist/dpop.js`, and they do not
+`@uap/oauth`. They do not import `@uap/oauth/dist/dpop.js`, and they do not
 reach across with `../../oauth/src/dpop.js`. Both are rejected by the check and
 by Node's resolver.
 
@@ -123,7 +123,7 @@ lower down.
 
 ### 4. The kernel is sealed
 
-`@umg/core` is the one module everything imports, so it is the one module that
+`@uap/core` is the one module everything imports, so it is the one module that
 must not grow a dependency. It has zero workspace dependencies and may use
 `node:crypto` and nothing else; the check enforces both. An import of a driver
 or a socket there would put infrastructure underneath every rule in the system.

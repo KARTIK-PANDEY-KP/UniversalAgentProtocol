@@ -5,7 +5,7 @@ import {
   GatewayMcpClient,
   MockIdentityProvider,
   MockMcpServer,
-} from "@umg/conformance";
+} from "@uap/conformance";
 
 /**
  * Section 12: the gateway advertises itself as an OAuth protected resource, so

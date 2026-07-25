@@ -1,4 +1,4 @@
-import { GatewayError } from "@umg/core";
+import { GatewayError } from "@uap/core";
 
 export interface Page<T> {
   items: T[];

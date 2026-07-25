@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { McpMethod, type JsonObject, type RequestId } from "@umg/core";
+import { McpMethod, type JsonObject, type RequestId } from "@uap/core";
 import {
   GatewayFixture,
   GatewayMcpClient,
   connectUpstream,
   startProtectedUpstream,
-} from "@umg/conformance";
+} from "@uap/conformance";
 
 /**
  * The parts of MCP that are neither a plain request nor a plain response:

@@ -2,9 +2,9 @@ import { generateKeyPairSync } from "node:crypto";
 
 import { describe, expect, it } from "vitest";
 
-import { GatewayError } from "@umg/core";
+import { GatewayError } from "@uap/core";
 
-import { SigningKeyStore } from "@umg/security";
+import { SigningKeyStore } from "@uap/security";
 
 function ecPem(namedCurve: string): string {
   const { privateKey } = generateKeyPairSync("ec", { namedCurve });

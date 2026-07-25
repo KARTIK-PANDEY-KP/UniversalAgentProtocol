@@ -1,9 +1,9 @@
-import { Gateway } from "@umg/gateway";
+import { Gateway } from "@uap/gateway";
 
 async function main(): Promise<void> {
   const gateway = new Gateway();
   const port = await gateway.listen();
-  gateway.services.logger.info("Universal MCP Gateway started", {
+  gateway.services.logger.info("Universal Agent Protocol Gateway started", {
     baseUrl: gateway.services.config.baseUrl,
     port,
     mcpEndpoint: `${gateway.services.config.baseUrl}/mcp`,

@@ -7,7 +7,7 @@ import {
 } from "node:crypto";
 import type { ServerResponse } from "node:http";
 
-import type { TokenEndpointAuthMethod } from "@umg/core";
+import type { TokenEndpointAuthMethod } from "@uap/core";
 
 import {
   HttpFixture,

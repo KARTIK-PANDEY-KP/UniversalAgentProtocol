@@ -1,5 +1,5 @@
 {
-  "name": "@umg/migration-cli",
+  "name": "@uap/migration-cli",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -12,9 +12,9 @@
     }
   },
   "bin": {
-    "umg-migrate": "./dist/main.js"
+    "uap-migrate": "./dist/main.js"
   },
   "dependencies": {
-    "@umg/security": "workspace:*"
+    "@uap/security": "workspace:*"
   }
 }

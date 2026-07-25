@@ -14,8 +14,8 @@ import {
   type McpImplementation,
   type McpServerRecord,
   type UpstreamConnection,
-} from "@umg/core";
-import { probeMcpEndpoint } from "@umg/mcp-client";
+} from "@uap/core";
+import { probeMcpEndpoint } from "@uap/mcp-client";
 import {
   parseWwwAuthenticate,
   selectBearerChallenge,
@@ -23,10 +23,10 @@ import {
   type OAuthDiscoveryService,
   type OAuthTokenManager,
   type RegistrationSelector,
-} from "@umg/oauth";
-import { Metric, type Logger, type MetricsRegistry } from "@umg/observability";
-import { canonicalizeUrl, type CredentialVault, type SafeFetcher } from "@umg/security";
-import type { GatewayStore, ToolSyncResult } from "@umg/storage";
+} from "@uap/oauth";
+import { Metric, type Logger, type MetricsRegistry } from "@uap/observability";
+import { canonicalizeUrl, type CredentialVault, type SafeFetcher } from "@uap/security";
+import type { GatewayStore, ToolSyncResult } from "@uap/storage";
 
 import type { AuditService } from "./audit.js";
 import {

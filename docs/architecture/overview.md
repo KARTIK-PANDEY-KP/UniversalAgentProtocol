@@ -10,7 +10,7 @@ Cursor / Claude Code / Codex / cloud agents
         │  MCP client  →  MCP server
         ▼
 ┌──────────────────────────────────────────────┐
-│ Universal MCP Gateway                        │
+│ Universal Agent Protocol Gateway                        │
 │                                              │
 │  northbound MCP server   (packages/mcp-server)
 │  tool federation         (packages/federation)

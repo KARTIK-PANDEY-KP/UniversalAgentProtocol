@@ -7,7 +7,7 @@ import {
   type KeyObject,
 } from "node:crypto";
 
-import { base64url, type AuthorizationServerMetadata } from "@umg/core";
+import { base64url, type AuthorizationServerMetadata } from "@uap/core";
 
 /** An ES256 key pair bound to one upstream connection. */
 export interface DpopKey {

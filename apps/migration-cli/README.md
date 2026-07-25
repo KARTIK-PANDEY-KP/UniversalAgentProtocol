@@ -20,7 +20,7 @@ than an afterthought.
 
 ## Public interface
 
-`@umg/migration-cli`, from `src/index.ts`. The exports exist so the conformance
+`@uap/migration-cli`, from `src/index.ts`. The exports exist so the conformance
 suite can drive the commands in-process; the supported interface for humans is
 the command line.
 
@@ -36,9 +36,9 @@ the command line.
 
 ## Depends on
 
-- `@umg/observability`
+- `@uap/observability`
 
-Deliberately not `@umg/storage` or `@umg/gateway`: the CLI is a remote client
+Deliberately not `@uap/storage` or `@uap/gateway`: the CLI is a remote client
 of a running gateway, not a second way into its database.
 
 ## Data ownership
@@ -50,8 +50,8 @@ No tables. It owns the backup files it writes, under its own directory.
 `src/main.ts`.
 
 ```bash
-pnpm --filter @umg/migration-cli start -- discover
-pnpm --filter @umg/migration-cli start -- import --dry-run
+pnpm --filter @uap/migration-cli start -- discover
+pnpm --filter @uap/migration-cli start -- import --dry-run
 ```
 
 ## Invariants
@@ -69,7 +69,7 @@ pnpm --filter @umg/migration-cli start -- import --dry-run
 ## Testing
 
 ```bash
-pnpm --filter @umg/migration-cli test
+pnpm --filter @uap/migration-cli test
 ```
 
 Tests run against temporary directories holding realistic client

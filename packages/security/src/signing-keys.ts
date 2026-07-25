@@ -6,7 +6,7 @@ import {
   type KeyObject,
 } from "node:crypto";
 
-import { GatewayError } from "@umg/core";
+import { GatewayError } from "@uap/core";
 
 export interface SigningKey {
   kid: string;

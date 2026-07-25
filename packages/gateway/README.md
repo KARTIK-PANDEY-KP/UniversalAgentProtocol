@@ -19,7 +19,7 @@ module. Nothing depends on it except the deployables in `apps/`.
 
 ## Public interface
 
-`@umg/gateway`, from `src/index.ts`.
+`@uap/gateway`, from `src/index.ts`.
 
 - `config.ts` — the configuration schema, its defaults, and validation. One
   place to learn every knob the operator has.
@@ -33,13 +33,13 @@ module. Nothing depends on it except the deployables in `apps/`.
 
 ## Depends on
 
-- `@umg/core`
-- `@umg/observability`
-- `@umg/security`
-- `@umg/storage`
-- `@umg/oauth`
-- `@umg/mcp-server`
-- `@umg/federation`
+- `@uap/core`
+- `@uap/observability`
+- `@uap/security`
+- `@uap/storage`
+- `@uap/oauth`
+- `@uap/mcp-server`
+- `@uap/federation`
 
 ## Data ownership
 
@@ -65,7 +65,7 @@ that own them.
 ## Testing
 
 ```bash
-pnpm --filter @umg/conformance-tests test
+pnpm --filter @uap/conformance-tests test
 ```
 
 ## Owners

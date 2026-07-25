@@ -13,7 +13,7 @@ import {
   type McpPrompt,
   type McpResource,
   type McpToolResult,
-} from "@umg/core";
+} from "@uap/core";
 
 import {
   HttpFixture,

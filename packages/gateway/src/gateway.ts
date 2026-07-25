@@ -11,7 +11,7 @@ import {
   toGatewayError,
   type Clock,
   type McpImplementation,
-} from "@umg/core";
+} from "@uap/core";
 import {
   AuditService,
   ConnectionService,
@@ -20,14 +20,14 @@ import {
   UpstreamSessionManager,
   DEFAULT_TOOL_POLICY,
   type ToolPolicy,
-} from "@umg/federation";
+} from "@uap/federation";
 import {
   NorthboundMcpServer,
   headerValue,
   type AuthenticationOutcome,
   type BearerChallenge,
   type NorthboundPrincipal,
-} from "@umg/mcp-server";
+} from "@uap/mcp-server";
 import {
   DEFAULT_TOKEN_MANAGER_CONFIG,
   OAuthDiscoveryService,
@@ -39,13 +39,13 @@ import {
   gatewayIdentityFromBaseUrl,
   type GatewayIdentity,
   type VerifiedAccessToken,
-} from "@umg/oauth";
+} from "@uap/oauth";
 import {
   MetricsRegistry,
   createLogger,
   type LogSink,
   type Logger,
-} from "@umg/observability";
+} from "@uap/observability";
 import {
   CredentialVault,
   LocalKeyring,
@@ -53,16 +53,16 @@ import {
   SafeFetcher,
   SigningKeyStore,
   STRICT_SSRF_POLICY,
-} from "@umg/security";
-import { SqliteGatewayStore, type GatewayStore } from "@umg/storage";
+} from "@uap/security";
+import { SqliteGatewayStore, type GatewayStore } from "@uap/storage";
 
 import { loadConfig, type ApiKeyPrincipal, type GatewayConfig } from "./config.js";
 import { registerRoutes } from "./routes.js";
 import { Router } from "./router.js";
 
 export const GATEWAY_SERVER_INFO: McpImplementation = {
-  name: "universal-mcp-gateway",
-  title: "Universal MCP Gateway",
+  name: "uap-gateway",
+  title: "Universal Agent Protocol Gateway",
   version: "0.1.0",
 };
 
@@ -115,7 +115,7 @@ export class Gateway {
     const logger = createLogger({
       level: config.logLevel,
       ...(options.logSink ? { sink: options.logSink } : {}),
-      bindings: { service: "universal-mcp-gateway" },
+      bindings: { service: "uap-gateway" },
     });
     const metrics = new MetricsRegistry();
 

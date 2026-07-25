@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { JsonRpcErrorCode, McpMethod, type JsonObject } from "@umg/core";
+import { JsonRpcErrorCode, McpMethod, type JsonObject } from "@uap/core";
 import {
   GatewayFixture,
   GatewayMcpClient,
   MockMcpServer,
   connectUpstream,
   startProtectedUpstream,
-} from "@umg/conformance";
+} from "@uap/conformance";
 
 /**
  * Section 19.5: several unrelated upstream servers behind one gateway URL,

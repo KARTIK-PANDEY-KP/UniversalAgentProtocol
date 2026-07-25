@@ -1,14 +1,14 @@
 {
-  "name": "@umg/conformance-tests",
+  "name": "@uap/conformance-tests",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "dependencies": {
-    "@umg/conformance": "workspace:*",
-    "@umg/core": "workspace:*",
-    "@umg/federation": "workspace:*",
-    "@umg/gateway": "workspace:*",
-    "@umg/migration-cli": "workspace:*",
-    "@umg/security": "workspace:*"
+    "@uap/conformance": "workspace:*",
+    "@uap/core": "workspace:*",
+    "@uap/federation": "workspace:*",
+    "@uap/gateway": "workspace:*",
+    "@uap/migration-cli": "workspace:*",
+    "@uap/security": "workspace:*"
   }
 }

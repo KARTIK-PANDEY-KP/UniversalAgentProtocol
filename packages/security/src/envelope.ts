@@ -4,7 +4,7 @@ import {
   randomBytes,
 } from "node:crypto";
 
-import { GatewayError } from "@umg/core";
+import { GatewayError } from "@uap/core";
 
 const ALGORITHM = "aes-256-gcm";
 const IV_BYTES = 12;

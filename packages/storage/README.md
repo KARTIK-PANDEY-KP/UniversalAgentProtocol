@@ -15,14 +15,14 @@ business rule.
 
 - Business rules. A repository stores what it is handed; it does not decide
   whether the caller was allowed to hand it over.
-- Encryption. Credentials arrive already sealed by `@umg/security`'s vault, and
+- Encryption. Credentials arrive already sealed by `@uap/security`'s vault, and
   this module has no way to open them.
 - Cross-record consistency beyond a transaction. Reconciling a catalogue with
-  an upstream belongs to `@umg/federation`.
+  an upstream belongs to `@uap/federation`.
 
 ## Public interface
 
-`@umg/storage`, from `src/index.ts`.
+`@uap/storage`, from `src/index.ts`.
 
 - `store.ts` — `Store` and every repository interface on it. This is the
   contract other modules are written against.
@@ -33,8 +33,8 @@ business rule.
 
 ## Depends on
 
-- `@umg/core`
-- `@umg/security` — for the encrypted-column types.
+- `@uap/core`
+- `@uap/security` — for the encrypted-column types.
 
 ## Data ownership
 
@@ -47,8 +47,8 @@ Every table, and the schema version:
 `preconfigured_oauth_clients`, `dpop_keys`, `distributed_locks`.
 
 Logical ownership of each table sits with the module whose capability it
-serves — connections and catalogues with `@umg/federation`, issuers and
-registrations with `@umg/oauth` — but all of them are reached through a
+serves — connections and catalogues with `@uap/federation`, issuers and
+registrations with `@uap/oauth` — but all of them are reached through a
 repository declared here. No module issues SQL of its own.
 
 ## Entry points
@@ -70,7 +70,7 @@ repository declared here. No module issues SQL of its own.
 ## Testing
 
 ```bash
-pnpm --filter @umg/storage test
+pnpm --filter @uap/storage test
 ```
 
 The tests run against a real SQLite database in a temporary directory.

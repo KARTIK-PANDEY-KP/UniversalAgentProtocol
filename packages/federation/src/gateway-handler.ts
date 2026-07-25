@@ -23,17 +23,17 @@ import {
   type McpLogLevel,
   type McpTool,
   type UpstreamConnection,
-} from "@umg/core";
+} from "@uap/core";
 import type {
   DownstreamSessionHandle,
   McpServerHandler,
   RequestContext,
-} from "@umg/mcp-server";
-import type { UpstreamMcpConnection } from "@umg/mcp-client";
-import { insufficientScopeFrom, type OAuthTokenManager } from "@umg/oauth";
-import { Metric, type Logger, type MetricsRegistry } from "@umg/observability";
-import type { RateLimiter } from "@umg/security";
-import type { GatewayStore } from "@umg/storage";
+} from "@uap/mcp-server";
+import type { UpstreamMcpConnection } from "@uap/mcp-client";
+import { insufficientScopeFrom, type OAuthTokenManager } from "@uap/oauth";
+import { Metric, type Logger, type MetricsRegistry } from "@uap/observability";
+import type { RateLimiter } from "@uap/security";
+import type { GatewayStore } from "@uap/storage";
 
 import type { AuditService } from "./audit.js";
 import type { CatalogueChange } from "./connection-service.js";

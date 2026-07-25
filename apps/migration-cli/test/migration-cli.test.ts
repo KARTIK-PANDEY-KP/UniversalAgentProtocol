@@ -13,7 +13,7 @@ import {
   type CliContext,
   type Output,
   type PathContext,
-} from "@umg/migration-cli";
+} from "@uap/migration-cli";
 
 const GATEWAY_MCP_URL = "https://gateway.example.com/mcp";
 
@@ -46,7 +46,7 @@ async function write(path: string, contents: string): Promise<void> {
 
 /** A machine with the same remote MCP server configured in several clients. */
 async function sandbox(): Promise<Sandbox> {
-  const root = await mkdtemp(join(tmpdir(), "umg-migrate-"));
+  const root = await mkdtemp(join(tmpdir(), "uap-migrate-"));
   sandboxes.push(root);
   const home = join(root, "home");
   const cwd = join(root, "project");
@@ -154,7 +154,7 @@ const installOptions = {
   gatewayMcpUrl: GATEWAY_MCP_URL,
   entryName: "universal-gateway",
   apiKey: "gw_secret_key",
-  apiKeyEnvVar: "UMG_GATEWAY_API_KEY",
+  apiKeyEnvVar: "UAP_GATEWAY_API_KEY",
   inlineKey: false,
   dryRun: false,
 };
@@ -244,7 +244,7 @@ describe("install", () => {
     expect(cursor.mcpServers["universal-gateway"]).toEqual({
       type: "http",
       url: GATEWAY_MCP_URL,
-      headers: { Authorization: "Bearer ${env:UMG_GATEWAY_API_KEY}" },
+      headers: { Authorization: "Bearer ${env:UAP_GATEWAY_API_KEY}" },
     });
     // The servers the user already had are untouched.
     expect(cursor.mcpServers["github"]).toEqual({ url: GITHUB });
@@ -254,7 +254,7 @@ describe("install", () => {
       numStartups: number;
     };
     expect(claude.mcpServers["universal-gateway"]?.headers["Authorization"]).toBe(
-      "Bearer ${UMG_GATEWAY_API_KEY}",
+      "Bearer ${UAP_GATEWAY_API_KEY}",
     );
     expect(claude.numStartups).toBe(12);
 
@@ -280,7 +280,7 @@ describe("install", () => {
     expect(toml).toContain("[mcp_servers.universal-gateway]");
     expect(toml).toContain(`url = "${GATEWAY_MCP_URL}"`);
     // Codex takes the name of the variable, never the token itself.
-    expect(toml).toContain('bearer_token_env_var = "UMG_GATEWAY_API_KEY"');
+    expect(toml).toContain('bearer_token_env_var = "UAP_GATEWAY_API_KEY"');
     expect(toml).not.toContain("gw_secret_key");
 
     // Everything the user wrote survives, comments included.

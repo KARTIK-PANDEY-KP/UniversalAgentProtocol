@@ -12,20 +12,20 @@ identically named tools apart, discovery and resynchronisation of catalogues,
 the policy applied to a call, the audit trail it leaves, and the pooling of
 upstream sessions.
 
-This module holds the rules. `@umg/mcp-client` and `@umg/mcp-server` hold the
-protocol; `@umg/oauth` holds the credentials.
+This module holds the rules. `@uap/mcp-client` and `@uap/mcp-server` hold the
+protocol; `@uap/oauth` holds the credentials.
 
 ## Does not own
 
-- The HTTP surface or configuration, which is `@umg/gateway`.
+- The HTTP surface or configuration, which is `@uap/gateway`.
 - Any transport detail. It asks for an upstream connection and gets one.
-- Token acquisition or refresh. It asks `@umg/oauth` for a usable credential
+- Token acquisition or refresh. It asks `@uap/oauth` for a usable credential
   and reacts to being told there is not one.
-- SQL. Everything persists through repositories declared in `@umg/storage`.
+- SQL. Everything persists through repositories declared in `@uap/storage`.
 
 ## Public interface
 
-`@umg/federation`, from `src/index.ts`.
+`@uap/federation`, from `src/index.ts`.
 
 - `connection-service.ts` — connect, authorize, rename, refresh, disconnect,
   and enable or disable either an individual tool or a whole connection. Every
@@ -46,19 +46,19 @@ protocol; `@umg/oauth` holds the credentials.
 
 ## Depends on
 
-- `@umg/core`
-- `@umg/observability`
-- `@umg/security`
-- `@umg/storage`
-- `@umg/oauth`
-- `@umg/mcp-client`
-- `@umg/mcp-server`
+- `@uap/core`
+- `@uap/observability`
+- `@uap/security`
+- `@uap/storage`
+- `@uap/oauth`
+- `@uap/mcp-client`
+- `@uap/mcp-server`
 
 ## Data ownership
 
 Logical owner of `mcp_servers`, `upstream_connections`, `discovered_tools`,
 `discovered_resources`, `discovered_prompts`, `upstream_mcp_sessions` and
-`audit_events`, all reached through repositories declared in `@umg/storage`.
+`audit_events`, all reached through repositories declared in `@uap/storage`.
 
 ## Entry points
 
@@ -96,7 +96,7 @@ Everything else is exercised end to end, because a routing rule is only true
 against a real upstream:
 
 ```bash
-pnpm --filter @umg/conformance-tests test
+pnpm --filter @uap/conformance-tests test
 ```
 
 ## Owners

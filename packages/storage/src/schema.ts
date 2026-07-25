@@ -15,7 +15,7 @@ import type {
   UpstreamConnection,
   UpstreamSessionRecord,
   User,
-} from "@umg/core";
+} from "@uap/core";
 
 import { bool, json, jsonArray, num, text, textNull, type Mapper } from "./mapper.js";
 

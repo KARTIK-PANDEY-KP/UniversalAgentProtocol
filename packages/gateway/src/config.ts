@@ -1,5 +1,5 @@
-import { GatewayError, isToolRiskLevel, parseScopes, type ToolRiskLevel } from "@umg/core";
-import type { LogLevel } from "@umg/observability";
+import { GatewayError, isToolRiskLevel, parseScopes, type ToolRiskLevel } from "@uap/core";
+import type { LogLevel } from "@uap/observability";
 
 export interface ApiKeyPrincipal {
   /** Stored as the raw key for local development; hash in production. */

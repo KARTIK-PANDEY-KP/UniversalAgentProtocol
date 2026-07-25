@@ -15,14 +15,14 @@ import {
   type CliContext,
   type Output,
   type PathContext,
-} from "@umg/migration-cli";
+} from "@uap/migration-cli";
 import {
   GatewayFixture,
   GatewayMcpClient,
   completeAuthorization,
   startProtectedUpstream,
   type ProtectedUpstream,
-} from "@umg/conformance";
+} from "@uap/conformance";
 
 /**
  * Section 6.2 and phase 5. The user already has two protected MCP servers
@@ -59,7 +59,7 @@ describe("migrating existing MCP configurations", () => {
     cursor: Record<string, string>;
     codex: Record<string, string>;
   }): Promise<{ home: string; cwd: string; paths: PathContext; stateDir: string }> {
-    const root = await mkdtemp(join(tmpdir(), "umg-migration-"));
+    const root = await mkdtemp(join(tmpdir(), "uap-migration-"));
     sandboxes.push(root);
     const home = join(root, "home");
     const cwd = join(root, "project");
@@ -176,7 +176,7 @@ describe("migrating existing MCP configurations", () => {
       gatewayMcpUrl: control.mcpUrl,
       entryName: "universal-gateway",
       apiKey: gateway.apiKey,
-      apiKeyEnvVar: "UMG_GATEWAY_API_KEY",
+      apiKeyEnvVar: "UAP_GATEWAY_API_KEY",
       inlineKey: true,
       dryRun: false,
     })).toBe(0);
@@ -250,7 +250,7 @@ describe("migrating existing MCP configurations", () => {
       gatewayMcpUrl: control.mcpUrl,
       entryName: "universal-gateway",
       apiKey: gateway.apiKey,
-      apiKeyEnvVar: "UMG_GATEWAY_API_KEY",
+      apiKeyEnvVar: "UAP_GATEWAY_API_KEY",
       inlineKey: true,
       dryRun: false,
     });
@@ -295,7 +295,7 @@ describe("migrating existing MCP configurations", () => {
       gatewayMcpUrl: control.mcpUrl,
       entryName: "universal-gateway",
       apiKey: gateway.apiKey,
-      apiKeyEnvVar: "UMG_GATEWAY_API_KEY",
+      apiKeyEnvVar: "UAP_GATEWAY_API_KEY",
       inlineKey: true,
       dryRun: false,
     });

@@ -1,4 +1,4 @@
-import { GatewayError } from "@umg/core";
+import { GatewayError } from "@uap/core";
 
 export interface UrlPolicy {
   /** Plain HTTP is only acceptable for local development and test fixtures. */

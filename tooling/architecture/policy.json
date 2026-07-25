@@ -10,52 +10,52 @@
     {
       "name": "kernel",
       "purpose": "Shared contracts and pure helpers. Depends on nothing.",
-      "modules": ["@umg/core"]
+      "modules": ["@uap/core"]
     },
     {
       "name": "telemetry",
       "purpose": "Structured logging and metrics, needed by everything below the apps.",
-      "modules": ["@umg/observability"]
+      "modules": ["@uap/observability"]
     },
     {
       "name": "platform",
       "purpose": "Cross-cutting infrastructure primitives with no business meaning.",
-      "modules": ["@umg/security"]
+      "modules": ["@uap/security"]
     },
     {
       "name": "persistence",
       "purpose": "The database and the repository interfaces over it.",
-      "modules": ["@umg/storage"]
+      "modules": ["@uap/storage"]
     },
     {
       "name": "protocol",
       "purpose": "Adapters that speak OAuth and MCP to the outside world.",
-      "modules": ["@umg/mcp-client", "@umg/mcp-server", "@umg/oauth"]
+      "modules": ["@uap/mcp-client", "@uap/mcp-server", "@uap/oauth"]
     },
     {
       "name": "capability",
       "purpose": "The gateway's business capability: federation, policy, catalogue.",
-      "modules": ["@umg/federation"]
+      "modules": ["@uap/federation"]
     },
     {
       "name": "composition",
       "purpose": "Wires the modules together and owns the HTTP surface.",
-      "modules": ["@umg/gateway"]
+      "modules": ["@uap/gateway"]
     },
     {
       "name": "entrypoint",
       "purpose": "The deployables. No library may depend on these.",
-      "modules": ["@umg/gateway-api", "@umg/background-worker", "@umg/migration-cli"]
+      "modules": ["@uap/gateway-api", "@uap/background-worker", "@uap/migration-cli"]
     },
     {
       "name": "harness",
       "purpose": "Mock upstreams and fixtures that stand a whole gateway up for a test.",
-      "modules": ["@umg/conformance"]
+      "modules": ["@uap/conformance"]
     },
     {
       "name": "suite",
       "purpose": "The conformance suite, which exercises the deployables through the harness.",
-      "modules": ["@umg/conformance-tests"]
+      "modules": ["@uap/conformance-tests"]
     }
   ],
 
@@ -66,7 +66,7 @@
       "nothing else: an import of a driver, a socket or the filesystem here would",
       "put infrastructure underneath every business rule in the repository."
     ],
-    "module": "@umg/core",
+    "module": "@uap/core",
     "allowedBuiltins": ["node:crypto"]
   },
 

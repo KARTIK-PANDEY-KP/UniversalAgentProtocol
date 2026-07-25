@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { GatewayError } from "@umg/core";
+import { GatewayError } from "@uap/core";
 
-import { InProcessLock } from "@umg/security";
+import { InProcessLock } from "@uap/security";
 
 /** A promise with its settle functions exposed, so a test can hold a lock open. */
 function deferred<T = void>() {

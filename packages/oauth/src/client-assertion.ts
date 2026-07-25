@@ -1,7 +1,7 @@
 import { createSign, randomUUID } from "node:crypto";
 
-import { base64url } from "@umg/core";
-import type { SigningKey } from "@umg/security";
+import { base64url } from "@uap/core";
+import type { SigningKey } from "@uap/security";
 
 export interface ClientAssertionParams {
   clientId: string;

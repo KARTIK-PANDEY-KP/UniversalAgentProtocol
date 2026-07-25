@@ -15,13 +15,13 @@ HTTP or the older HTTP+SSE transport; callers above this module see one
 - Credentials. A connection is handed the headers to use and never learns where
   they came from or how to renew them.
 - What to do with an upstream's catalogue. Discovery and federation belong to
-  `@umg/federation`.
+  `@uap/federation`.
 - Retry policy across reconnects. This module reconnects a stream; deciding a
   connection is unhealthy is the caller's call.
 
 ## Public interface
 
-`@umg/mcp-client`, from `src/index.ts`.
+`@uap/mcp-client`, from `src/index.ts`.
 
 - `probe.ts` — negotiating which transport an upstream actually supports.
 - `transport.ts` — the transport interface both implementations satisfy.
@@ -32,9 +32,9 @@ HTTP or the older HTTP+SSE transport; callers above this module see one
 
 ## Depends on
 
-- `@umg/core`
-- `@umg/observability`
-- `@umg/security`
+- `@uap/core`
+- `@uap/observability`
+- `@uap/security`
 
 ## Data ownership
 
@@ -64,7 +64,7 @@ above this module.
 ## Testing
 
 ```bash
-pnpm --filter @umg/conformance-tests test
+pnpm --filter @uap/conformance-tests test
 ```
 
 Exercised against the mock MCP servers in the harness, which can be configured

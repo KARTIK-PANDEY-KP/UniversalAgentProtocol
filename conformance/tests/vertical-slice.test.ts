@@ -6,7 +6,7 @@ import {
   connectUpstream,
   startProtectedUpstream,
   type ProtectedUpstream,
-} from "@umg/conformance";
+} from "@uap/conformance";
 
 describe("end-to-end vertical slice", () => {
   let gateway: GatewayFixture;
@@ -62,7 +62,7 @@ describe("end-to-end vertical slice", () => {
       clientInfo: { name: "conformance-cursor", version: "1.0.0" },
     });
     const initialize = await client.initialize();
-    expect(initialize["serverInfo"]).toMatchObject({ name: "universal-mcp-gateway" });
+    expect(initialize["serverInfo"]).toMatchObject({ name: "uap-gateway" });
 
     const tools = await client.listTools();
     expect(tools.map((tool) => tool.name)).toEqual(["issues.search"]);

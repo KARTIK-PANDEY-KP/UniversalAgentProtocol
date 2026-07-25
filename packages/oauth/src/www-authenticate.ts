@@ -1,4 +1,4 @@
-import type { WwwAuthenticateChallenge } from "@umg/core";
+import type { WwwAuthenticateChallenge } from "@uap/core";
 
 /**
  * Parses an RFC 7235 `WWW-Authenticate` header. MCP servers use it to point at

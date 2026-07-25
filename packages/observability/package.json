@@ -1,5 +1,5 @@
 {
-  "name": "@umg/observability",
+  "name": "@uap/observability",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -12,6 +12,6 @@
     }
   },
   "dependencies": {
-    "@umg/core": "workspace:*"
+    "@uap/core": "workspace:*"
   }
 }

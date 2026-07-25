@@ -2,20 +2,20 @@ import { randomBytes } from "node:crypto";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { sha256Hex } from "@umg/core";
+import { sha256Hex } from "@uap/core";
 import {
   BackgroundWorker,
   DEFAULT_BACKGROUND_CONFIG,
   type GatewayConfig,
-} from "@umg/gateway";
-import { LocalKeyring } from "@umg/security";
+} from "@uap/gateway";
+import { LocalKeyring } from "@uap/security";
 import {
   GatewayFixture,
   GatewayMcpClient,
   MockMcpServer,
   connectUpstream,
   startProtectedUpstream,
-} from "@umg/conformance";
+} from "@uap/conformance";
 
 /**
  * The worker keeps connections usable between requests. It shares the token

@@ -1,4 +1,4 @@
-import { GatewayError } from "@umg/core";
+import { GatewayError } from "@uap/core";
 
 export interface RateLimitRule {
   /** Sustained requests allowed per interval. */

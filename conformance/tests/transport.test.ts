@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { JsonObject } from "@umg/core";
-import { CATALOGUE_SESSION } from "@umg/federation";
+import type { JsonObject } from "@uap/core";
+import { CATALOGUE_SESSION } from "@uap/federation";
 import {
   GatewayFixture,
   GatewayMcpClient,
@@ -9,7 +9,7 @@ import {
   connectUpstream,
   readSse,
   startProtectedUpstream,
-} from "@umg/conformance";
+} from "@uap/conformance";
 
 /**
  * Section 19.3: both remote MCP transports, session lifecycle, streaming and

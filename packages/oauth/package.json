@@ -1,5 +1,5 @@
 {
-  "name": "@umg/oauth",
+  "name": "@uap/oauth",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -12,9 +12,9 @@
     }
   },
   "dependencies": {
-    "@umg/core": "workspace:*",
-    "@umg/observability": "workspace:*",
-    "@umg/security": "workspace:*",
-    "@umg/storage": "workspace:*"
+    "@uap/core": "workspace:*",
+    "@uap/observability": "workspace:*",
+    "@uap/security": "workspace:*",
+    "@uap/storage": "workspace:*"
   }
 }

@@ -7,7 +7,7 @@ import {
   isValidAlias,
   namespaceResultResources,
   sanitizeAlias,
-} from "@umg/federation";
+} from "@uap/federation";
 
 describe("alias naming", () => {
   it("keeps a sanitized alias within what the gateway accepts", () => {

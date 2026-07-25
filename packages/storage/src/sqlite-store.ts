@@ -20,13 +20,13 @@ import {
   type UpstreamConnection,
   type UpstreamSessionRecord,
   type User,
-} from "@umg/core";
+} from "@uap/core";
 import {
   InProcessLock,
   type DistributedLock,
   type LockContext,
   type LockOptions,
-} from "@umg/security";
+} from "@uap/security";
 
 import {
   DDL,

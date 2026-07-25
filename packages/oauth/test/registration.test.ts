@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import type { AuthorizationServerMetadata } from "@umg/core";
-import { createLogger, silentSink } from "@umg/observability";
+import type { AuthorizationServerMetadata } from "@uap/core";
+import { createLogger, silentSink } from "@uap/observability";
 import {
   ClientIdMetadataDocumentStrategy,
   assertValidClientIdMetadataUrl,
   buildClientIdMetadataDocument,
   gatewayIdentityFromBaseUrl,
   type RegistrationDeps,
-} from "@umg/oauth";
+} from "@uap/oauth";
 
 const CIMD_SERVER: AuthorizationServerMetadata = {
   issuer: "https://as.example.com",

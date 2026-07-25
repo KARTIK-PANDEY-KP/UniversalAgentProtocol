@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { GatewayError } from "@umg/core";
+import { GatewayError } from "@uap/core";
 import {
   GatewayFixture,
   HttpFixture,
@@ -9,7 +9,7 @@ import {
   connectUpstream,
   json,
   startProtectedUpstream,
-} from "@umg/conformance";
+} from "@uap/conformance";
 
 /**
  * Section 19.2: discovery must be driven entirely by what the resource and the

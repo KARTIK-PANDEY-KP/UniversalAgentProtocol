@@ -1,13 +1,13 @@
 {
-  "name": "@umg/background-worker",
+  "name": "@uap/background-worker",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "main": "./dist/main.js",
   "bin": {
-    "umg-worker": "./dist/main.js"
+    "uap-worker": "./dist/main.js"
   },
   "dependencies": {
-    "@umg/gateway": "workspace:*"
+    "@uap/gateway": "workspace:*"
   }
 }

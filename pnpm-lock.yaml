@@ -20,52 +20,52 @@ importers:
 
   apps/background-worker:
     dependencies:
-      '@umg/gateway':
+      '@uap/gateway':
         specifier: workspace:*
         version: link:../../packages/gateway
 
   apps/gateway-api:
     dependencies:
-      '@umg/gateway':
+      '@uap/gateway':
         specifier: workspace:*
         version: link:../../packages/gateway
 
   apps/migration-cli:
     dependencies:
-      '@umg/security':
+      '@uap/security':
         specifier: workspace:*
         version: link:../../packages/security
 
   conformance/harness:
     dependencies:
-      '@umg/core':
+      '@uap/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@umg/gateway':
+      '@uap/gateway':
         specifier: workspace:*
         version: link:../../packages/gateway
-      '@umg/observability':
+      '@uap/observability':
         specifier: workspace:*
         version: link:../../packages/observability
 
   conformance/tests:
     dependencies:
-      '@umg/conformance':
+      '@uap/conformance':
         specifier: workspace:*
         version: link:../harness
-      '@umg/core':
+      '@uap/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@umg/federation':
+      '@uap/federation':
         specifier: workspace:*
         version: link:../../packages/federation
-      '@umg/gateway':
+      '@uap/gateway':
         specifier: workspace:*
         version: link:../../packages/gateway
-      '@umg/migration-cli':
+      '@uap/migration-cli':
         specifier: workspace:*
         version: link:../../apps/migration-cli
-      '@umg/security':
+      '@uap/security':
         specifier: workspace:*
         version: link:../../packages/security
 
@@ -73,112 +73,112 @@ importers:
 
   packages/federation:
     dependencies:
-      '@umg/core':
+      '@uap/core':
         specifier: workspace:*
         version: link:../core
-      '@umg/mcp-client':
+      '@uap/mcp-client':
         specifier: workspace:*
         version: link:../mcp-client
-      '@umg/mcp-server':
+      '@uap/mcp-server':
         specifier: workspace:*
         version: link:../mcp-server
-      '@umg/oauth':
+      '@uap/oauth':
         specifier: workspace:*
         version: link:../oauth
-      '@umg/observability':
+      '@uap/observability':
         specifier: workspace:*
         version: link:../observability
-      '@umg/security':
+      '@uap/security':
         specifier: workspace:*
         version: link:../security
-      '@umg/storage':
+      '@uap/storage':
         specifier: workspace:*
         version: link:../storage
 
   packages/gateway:
     dependencies:
-      '@umg/core':
+      '@uap/core':
         specifier: workspace:*
         version: link:../core
-      '@umg/federation':
+      '@uap/federation':
         specifier: workspace:*
         version: link:../federation
-      '@umg/mcp-server':
+      '@uap/mcp-server':
         specifier: workspace:*
         version: link:../mcp-server
-      '@umg/oauth':
+      '@uap/oauth':
         specifier: workspace:*
         version: link:../oauth
-      '@umg/observability':
+      '@uap/observability':
         specifier: workspace:*
         version: link:../observability
-      '@umg/security':
+      '@uap/security':
         specifier: workspace:*
         version: link:../security
-      '@umg/storage':
+      '@uap/storage':
         specifier: workspace:*
         version: link:../storage
 
   packages/mcp-client:
     dependencies:
-      '@umg/core':
+      '@uap/core':
         specifier: workspace:*
         version: link:../core
-      '@umg/observability':
+      '@uap/observability':
         specifier: workspace:*
         version: link:../observability
-      '@umg/security':
+      '@uap/security':
         specifier: workspace:*
         version: link:../security
 
   packages/mcp-server:
     dependencies:
-      '@umg/core':
+      '@uap/core':
         specifier: workspace:*
         version: link:../core
-      '@umg/observability':
+      '@uap/observability':
         specifier: workspace:*
         version: link:../observability
-      '@umg/security':
+      '@uap/security':
         specifier: workspace:*
         version: link:../security
 
   packages/oauth:
     dependencies:
-      '@umg/core':
+      '@uap/core':
         specifier: workspace:*
         version: link:../core
-      '@umg/observability':
+      '@uap/observability':
         specifier: workspace:*
         version: link:../observability
-      '@umg/security':
+      '@uap/security':
         specifier: workspace:*
         version: link:../security
-      '@umg/storage':
+      '@uap/storage':
         specifier: workspace:*
         version: link:../storage
 
   packages/observability:
     dependencies:
-      '@umg/core':
+      '@uap/core':
         specifier: workspace:*
         version: link:../core
 
   packages/security:
     dependencies:
-      '@umg/core':
+      '@uap/core':
         specifier: workspace:*
         version: link:../core
-      '@umg/observability':
+      '@uap/observability':
         specifier: workspace:*
         version: link:../observability
 
   packages/storage:
     dependencies:
-      '@umg/core':
+      '@uap/core':
         specifier: workspace:*
         version: link:../core
-      '@umg/security':
+      '@uap/security':
         specifier: workspace:*
         version: link:../security
 

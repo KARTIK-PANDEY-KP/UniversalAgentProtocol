@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { newId, type McpServerRecord, type UpstreamConnection } from "@umg/core";
-import { createInMemoryStore, type SqliteGatewayStore } from "@umg/storage";
+import { newId, type McpServerRecord, type UpstreamConnection } from "@uap/core";
+import { createInMemoryStore, type SqliteGatewayStore } from "@uap/storage";
 
 async function seedServer(
   store: SqliteGatewayStore,

@@ -16,7 +16,7 @@ wins the argument and loses the users.
 
 `node:sqlite`, built into Node 22.5, with no native dependency to install and
 no service to run. Every table, every migration and every line of SQL lives in
-`@umg/storage`.
+`@uap/storage`.
 
 Other modules never see SQL. They depend on repository *interfaces* declared in
 `store.ts`; `sqlite-store.ts` implements them. Moving to Postgres means writing

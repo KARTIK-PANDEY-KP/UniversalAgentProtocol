@@ -21,7 +21,7 @@ gateway does when a server misbehaves.
 
 ## Public interface
 
-`@umg/conformance`, from `src/index.ts`.
+`@uap/conformance`, from `src/index.ts`.
 
 - `mock-authorization-server.ts` — an RFC 8414 authorization server with knobs
   for PKCE, DCR, token rotation, DPoP, issuer echo and expiring secrets.
@@ -38,9 +38,9 @@ gateway does when a server misbehaves.
 
 ## Depends on
 
-- `@umg/core`
-- `@umg/observability`
-- `@umg/gateway`
+- `@uap/core`
+- `@uap/observability`
+- `@uap/gateway`
 
 ## Data ownership
 
@@ -63,7 +63,7 @@ No tables. Each fixture gets a temporary SQLite file it deletes on teardown.
 The harness is exercised by the suite that uses it:
 
 ```bash
-pnpm --filter @umg/conformance-tests test
+pnpm --filter @uap/conformance-tests test
 ```
 
 ## Owners

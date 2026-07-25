@@ -16,8 +16,8 @@ import type {
   UpstreamConnection,
   UpstreamSessionRecord,
   User,
-} from "@umg/core";
-import type { DistributedLock } from "@umg/security";
+} from "@uap/core";
+import type { DistributedLock } from "@uap/security";
 
 export interface TokenUpdate {
   connectionId: string;
