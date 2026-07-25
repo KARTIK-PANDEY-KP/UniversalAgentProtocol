@@ -145,6 +145,7 @@ export class GatewayMcpHandler implements McpServerHandler {
         tools: { listChanged: true },
         resources: { listChanged: true, subscribe: true },
         prompts: { listChanged: true },
+        completions: {},
         logging: {},
       },
       serverInfo: this.deps.serverInfo,
@@ -219,6 +220,8 @@ export class GatewayMcpHandler implements McpServerHandler {
         );
       case McpMethod.PromptsGet:
         return this.getPrompt(params, session);
+      case McpMethod.CompletionComplete:
+        return this.complete(params, session);
       case McpMethod.LoggingSetLevel:
         return this.setLogLevel(params, session);
       default:
@@ -719,6 +722,78 @@ export class GatewayMcpHandler implements McpServerHandler {
     const client = await this.upstreamFor(connection, session);
     const result = await client.getPrompt(record.upstreamName, params["arguments"] ?? {});
     return toJsonObject(result);
+  }
+
+  /**
+   * Completes an argument of a prompt or a resource template. The reference
+   * the client sends names the gateway's version of the prompt or template, so
+   * it identifies the upstream that owns it; the reference is rewritten to the
+   * upstream's own name before being forwarded.
+   */
+  private async complete(
+    params: JsonObject,
+    session: DownstreamSessionHandle,
+  ): Promise<JsonObject> {
+    const ref = params["ref"];
+    if (!isRecord(ref)) {
+      throw new GatewayError("INVALID_REQUEST", "completion/complete requires a ref");
+    }
+    const routed = await this.routeCompletionRef(ref, session);
+    const connection = await this.requireVisibleConnection(session, routed.connectionId);
+    const client = await this.upstreamFor(connection, session);
+    if (!client.capabilities.completions) {
+      // The upstream owns this prompt but offers no completions. An empty set
+      // is the specification's answer for "nothing to suggest", and it keeps
+      // one incapable upstream from failing a client's keystroke.
+      return { completion: { values: [], total: 0, hasMore: false } };
+    }
+    return client.request(
+      McpMethod.CompletionComplete,
+      { ...params, ref: routed.ref },
+      { idempotent: true },
+    );
+  }
+
+  private async routeCompletionRef(
+    ref: Record<string, unknown>,
+    session: DownstreamSessionHandle,
+  ): Promise<{ connectionId: string; ref: JsonObject }> {
+    if (ref["type"] === "ref/prompt") {
+      const name = ref["name"];
+      if (typeof name !== "string") {
+        throw new GatewayError("INVALID_REQUEST", "A prompt reference requires a name");
+      }
+      const record = await this.deps.store.prompts.findByGatewayName(
+        session.tenantId,
+        name,
+      );
+      if (!record) throw new GatewayError("NOT_FOUND", `Unknown prompt: ${name}`);
+      return {
+        connectionId: record.connectionId,
+        ref: { ...ref, name: record.upstreamName } as JsonObject,
+      };
+    }
+    if (ref["type"] === "ref/resource") {
+      const uri = ref["uri"];
+      if (typeof uri !== "string") {
+        throw new GatewayError("INVALID_REQUEST", "A resource reference requires a uri");
+      }
+      const record = await this.deps.store.resources.findByGatewayUri(
+        session.tenantId,
+        uri,
+      );
+      const target = record
+        ? { connectionId: record.connectionId, upstreamUri: record.upstreamUri }
+        : await this.routeByAlias(session, uri);
+      return {
+        connectionId: target.connectionId,
+        ref: { ...ref, uri: target.upstreamUri } as JsonObject,
+      };
+    }
+    throw new GatewayError(
+      "INVALID_REQUEST",
+      `Unsupported completion reference: ${String(ref["type"])}`,
+    );
   }
 
   /** Falls back to alias routing for resource URIs that were never listed. */

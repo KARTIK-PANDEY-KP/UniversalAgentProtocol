@@ -4,9 +4,17 @@
 
 MCP: initialization and capability negotiation, Streamable HTTP, legacy
 HTTP+SSE where practical, `tools/list`, `tools/call`, `resources/list`,
-`resources/read`, `prompts/list`, `prompts/get`, notifications, cancellation,
-progress notifications, server-to-client requests, the `MCP-Protocol-Version`
-header and `MCP-Session-Id` sessions.
+`resources/templates/list`, `resources/read`, `resources/subscribe`,
+`prompts/list`, `prompts/get`, `completion/complete`, `logging/setLevel`,
+cursor pagination on every list method, notifications, cancellation, progress
+notifications, server-to-client requests, the `MCP-Protocol-Version` header and
+`MCP-Session-Id` sessions.
+
+A completion is routed by its reference: the prompt name or resource URI the
+client sends is the gateway's namespaced version, which identifies the upstream
+that owns it, and the reference is rewritten to the upstream's own name before
+being forwarded. An upstream with no completions capability yields an empty set
+rather than an error, so one incapable server cannot fail a keystroke.
 
 OAuth: authorization code with PKCE S256, refresh tokens and rotation, state
 and issuer validation, redirect URI validation, scope negotiation, resource

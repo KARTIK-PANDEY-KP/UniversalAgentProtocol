@@ -54,6 +54,9 @@ export interface MockPromptDefinition extends McpPrompt {
   messages?: JsonObject[];
 }
 
+/** Suggestions this server returns for `completion/complete`. */
+export type MockCompleter = (ref: JsonObject, argument: JsonObject) => string[];
+
 export interface MockResourceDefinition extends McpResource {
   text?: string;
 }
@@ -81,6 +84,8 @@ export interface MockMcpServerOptions {
   tools?: MockToolDefinition[];
   resources?: MockResourceDefinition[];
   prompts?: MockPromptDefinition[];
+  /** Answers `completion/complete`; omit it to declare no such capability. */
+  complete?: MockCompleter;
   /** Refuse the first DPoP proof to hand out a nonce, as RFC 9449 allows. */
   requireDpopNonce?: boolean;
   /** Include `resource_metadata` in the 401 challenge. */
@@ -626,6 +631,7 @@ export class MockMcpServer {
         resources: { subscribe: true, listChanged: true },
         prompts: { listChanged: true },
         logging: {},
+        ...(this.options.complete ? { completions: {} } : {}),
       },
       serverInfo: {
         name: this.options.name ?? "mock-mcp-server",
@@ -674,6 +680,22 @@ export class MockMcpServer {
       case McpMethod.ResourcesSubscribe:
       case McpMethod.ResourcesUnsubscribe:
         return success(request.id, {});
+      case McpMethod.CompletionComplete: {
+        if (!this.options.complete) {
+          return failure(
+            request.id,
+            JsonRpcErrorCode.MethodNotFound,
+            "This server offers no completions",
+          );
+        }
+        const values = this.options.complete(
+          (params["ref"] ?? {}) as JsonObject,
+          (params["argument"] ?? {}) as JsonObject,
+        );
+        return success(request.id, {
+          completion: { values, total: values.length, hasMore: false },
+        });
+      }
       case McpMethod.LoggingSetLevel: {
         const level = params["level"];
         if (typeof level !== "string") {

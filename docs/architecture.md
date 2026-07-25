@@ -115,6 +115,17 @@ way: the subscription is placed upstream under the real URI, and the
 `notifications/resources/updated` that comes back is rewritten to the
 namespaced URI the client knows.
 
+Two client-side messages travel outward rather than inward.
+`logging/setLevel` is recorded on the downstream session and pushed to every
+upstream that declared a logging capability, including upstreams opened after
+the level was set — which is the usual order, since clients set the level
+immediately after `initialize` and open their first upstream on the first tool
+call. Upstreams that ignore the level are corrected on the way back: a
+`notifications/message` below the client's floor is dropped at the gateway.
+`notifications/roots/list_changed` is relayed to the session's upstreams,
+because the gateway advertises `roots.listChanged` to each of them on its
+client's behalf.
+
 ### Adding an upstream
 
 `POST /api/v1/connections` canonicalizes the URL, probes the endpoint,

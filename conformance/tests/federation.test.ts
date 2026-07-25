@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { McpMethod } from "@umg/core";
+import { McpMethod, type JsonObject } from "@umg/core";
 import {
   GatewayFixture,
   GatewayMcpClient,
@@ -409,6 +409,50 @@ describe("tool federation", () => {
       "docs/review",
     ]);
     expect(JSON.stringify(await client.getPrompt("docs/review"))).toContain("review it");
+    await client.close();
+  });
+
+  it("completes a prompt argument against the server that owns the prompt", async () => {
+    const gateway = await newGateway();
+    const seen: JsonObject[] = [];
+    const docs = await openMcpServer({
+      prompts: [{ name: "review", arguments: [{ name: "language" }] }],
+      complete: (ref, argument) => {
+        seen.push(ref);
+        return ["python", "typescript"].filter((value) =>
+          value.startsWith(String(argument["value"] ?? "")),
+        );
+      },
+    });
+    // A second upstream with the same prompt name, and no completions at all,
+    // so routing by the namespaced reference is what makes this work.
+    const wiki = await openMcpServer({ prompts: [{ name: "review" }] });
+    await gateway.createConnection(docs.url, { alias: "docs" });
+    await gateway.createConnection(wiki.url, { alias: "wiki" });
+
+    const client = await connectedClient(gateway);
+    const result = await client.request(McpMethod.CompletionComplete, {
+      ref: { type: "ref/prompt", name: "docs/review" },
+      argument: { name: "language", value: "ty" },
+    });
+    expect((result["completion"] as { values: string[] }).values).toEqual(["typescript"]);
+    // The upstream is asked about its own prompt, not the gateway's name for it.
+    expect(seen[0]).toEqual({ type: "ref/prompt", name: "review" });
+
+    // The other upstream owns a prompt of the same name but offers no
+    // completions; an empty set beats failing the client's keystroke.
+    const empty = await client.request(McpMethod.CompletionComplete, {
+      ref: { type: "ref/prompt", name: "wiki/review" },
+      argument: { name: "language", value: "ty" },
+    });
+    expect(empty["completion"]).toEqual({ values: [], total: 0, hasMore: false });
+
+    await expect(
+      client.request(McpMethod.CompletionComplete, {
+        ref: { type: "ref/prompt", name: "nobody/review" },
+        argument: { name: "language", value: "" },
+      }),
+    ).rejects.toThrow(/Unknown prompt/);
     await client.close();
   });
 
