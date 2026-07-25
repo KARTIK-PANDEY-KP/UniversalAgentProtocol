@@ -28,8 +28,8 @@ protocol; `@umg/oauth` holds the credentials.
 `@umg/federation`, from `src/index.ts`.
 
 - `connection-service.ts` — connect, authorize, rename, refresh, disconnect,
-  and enable or disable an individual tool. Every entry point takes a
-  `ControlPlaneActor`, and visibility is decided from it.
+  and enable or disable either an individual tool or a whole connection. Every
+  entry point takes a `ControlPlaneActor`, and visibility is decided from it.
 - `gateway-handler.ts` — the northbound MCP handler: the list methods, the
   call methods, completion, and the notifications that follow a catalogue
   change.
@@ -72,7 +72,10 @@ Logical owner of `mcp_servers`, `upstream_connections`, `discovered_tools`,
 - Aliases are stable. A downstream client that learned a tool name keeps it
   across a resync, unless the upstream itself renamed the tool.
 - A disabled tool is absent from every list method and refused by every call
-  path, not merely hidden.
+  path, not merely hidden. A disabled connection is absent in the same way,
+  and so is everything it discovered.
+- An upstream that lists the same tool, resource or prompt twice loses the
+  repeat, not its whole catalogue.
 - Arguments are validated against the upstream's schema before the call goes
   out, so a malformed call fails here rather than upstream.
 - Every call is audited, including the denied ones. An audit record never
@@ -82,6 +85,15 @@ Logical owner of `mcp_servers`, `upstream_connections`, `discovered_tools`,
 - Pagination cursors are opaque and tenant-bound.
 
 ## Testing
+
+Naming and schema validation are pure and are tested directly:
+
+```bash
+pnpm vitest run packages/federation
+```
+
+Everything else is exercised end to end, because a routing rule is only true
+against a real upstream:
 
 ```bash
 pnpm --filter @umg/conformance-tests test
