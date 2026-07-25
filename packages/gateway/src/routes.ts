@@ -64,7 +64,9 @@ export function registerRoutes(
         scopes_supported: config.gatewayScopesSupported,
         bearer_methods_supported: ["header"],
         resource_name: "Universal MCP Gateway",
-        resource_documentation: `${config.baseUrl}/docs`,
+        ...(config.documentationUri === null
+          ? {}
+          : { resource_documentation: config.documentationUri }),
       },
       { "cache-control": "public, max-age=3600" },
     );

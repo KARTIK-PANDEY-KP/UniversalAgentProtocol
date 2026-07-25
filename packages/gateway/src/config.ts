@@ -31,6 +31,8 @@ export interface GatewayConfig {
   /** How long a pending upstream authorization stays valid. */
   authorizationTransactionTtlMs: number;
   logoUri: string | null;
+  /** Advertised to downstream clients; omitted when the deployment has none. */
+  documentationUri: string | null;
 }
 
 const DEFAULTS = {
@@ -98,5 +100,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): GatewayConfig 
       env["GATEWAY_AUTHORIZATION_TTL_MS"] ?? DEFAULTS.authorizationTransactionTtlMs,
     ),
     logoUri: env["GATEWAY_LOGO_URI"] ?? null,
+    documentationUri: env["GATEWAY_DOCUMENTATION_URI"] ?? null,
   };
 }

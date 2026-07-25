@@ -41,6 +41,7 @@ All configuration is environment variables.
 | `GATEWAY_REQUEST_TIMEOUT_MS` | `60000` | Upstream request timeout |
 | `GATEWAY_AUTHORIZATION_TTL_MS` | `600000` | How long a pending authorization stays valid |
 | `GATEWAY_LOGO_URI` | none | Logo advertised in the client ID metadata document |
+| `GATEWAY_DOCUMENTATION_URI` | none | Documentation link advertised in the gateway's protected resource metadata |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error` |
 
 Worker intervals, all milliseconds:
