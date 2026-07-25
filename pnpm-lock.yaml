@@ -18,6 +18,15 @@ importers:
         specifier: ^3.0.5
         version: 3.2.7(@types/node@22.20.1)
 
+  apps/gateway-api:
+    dependencies:
+      '@umg/gateway':
+        specifier: workspace:*
+        version: link:../../packages/gateway
+      '@umg/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
+
   packages/core: {}
 
   packages/federation:
@@ -25,6 +34,33 @@ importers:
       '@umg/core':
         specifier: workspace:*
         version: link:../core
+      '@umg/mcp-client':
+        specifier: workspace:*
+        version: link:../mcp-client
+      '@umg/mcp-server':
+        specifier: workspace:*
+        version: link:../mcp-server
+      '@umg/oauth':
+        specifier: workspace:*
+        version: link:../oauth
+      '@umg/observability':
+        specifier: workspace:*
+        version: link:../observability
+      '@umg/security':
+        specifier: workspace:*
+        version: link:../security
+      '@umg/storage':
+        specifier: workspace:*
+        version: link:../storage
+
+  packages/gateway:
+    dependencies:
+      '@umg/core':
+        specifier: workspace:*
+        version: link:../core
+      '@umg/federation':
+        specifier: workspace:*
+        version: link:../federation
       '@umg/mcp-client':
         specifier: workspace:*
         version: link:../mcp-client

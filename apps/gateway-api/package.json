@@ -1,0 +1,14 @@
+{
+  "name": "@umg/gateway-api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/main.js",
+  "bin": {
+    "umg-gateway": "./dist/main.js"
+  },
+  "dependencies": {
+    "@umg/gateway": "workspace:*",
+    "@umg/observability": "workspace:*"
+  }
+}
