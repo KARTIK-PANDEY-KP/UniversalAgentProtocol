@@ -36,7 +36,7 @@ export function classifyTool(
     if (annotations["destructiveHint"] === true) return "DESTRUCTIVE";
     if (annotations["readOnlyHint"] === true) return "READ_ONLY";
   }
-  const haystack = `${name} ${description ?? ""}`;
+  const haystack = `${tokenize(name)} ${description ?? ""}`;
   for (const { level, pattern } of PATTERNS) {
     if (pattern.test(haystack)) {
       if (
@@ -50,4 +50,16 @@ export function classifyTool(
     }
   }
   return "UNKNOWN";
+}
+
+/**
+ * Splits a tool name into words. MCP tool names are almost always snake_case
+ * or camelCase, where a word-boundary match would never fire: `delete` inside
+ * `delete_repository` has word characters on both sides.
+ */
+function tokenize(name: string): string {
+  return name
+    .replace(/([a-z0-9])([A-Z])/gu, "$1 $2")
+    .replace(/[^a-zA-Z0-9]+/gu, " ")
+    .trim();
 }
