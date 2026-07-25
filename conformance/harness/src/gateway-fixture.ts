@@ -2,7 +2,7 @@ import { createServer } from "node:net";
 import type { AddressInfo } from "node:net";
 
 import { Gateway, type GatewayConfig } from "@umg/gateway";
-import type { LogSink } from "@umg/observability";
+import { silentSink, type LogSink } from "@umg/observability";
 
 export interface GatewayFixtureOptions {
   apiKey?: string;
@@ -64,7 +64,7 @@ export class GatewayFixture {
       ? (record) => {
           this.logs.push(record);
         }
-      : () => undefined;
+      : silentSink;
 
     this.gateway = new Gateway({
       logSink: sink,

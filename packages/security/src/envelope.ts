@@ -2,7 +2,6 @@ import {
   createCipheriv,
   createDecipheriv,
   randomBytes,
-  timingSafeEqual,
 } from "node:crypto";
 
 import { GatewayError } from "@umg/core";
@@ -184,8 +183,4 @@ export async function envelopeDecrypt(
   } finally {
     dataKey.fill(0);
   }
-}
-
-export function aadEquals(left: Buffer, right: Buffer): boolean {
-  return left.length === right.length && timingSafeEqual(left, right);
 }

@@ -8,26 +8,6 @@ export interface Clock {
 
 export const systemClock: Clock = { now: () => Date.now() };
 
-export class FixedClock implements Clock {
-  private current: number;
-
-  constructor(start: number) {
-    this.current = start;
-  }
-
-  now(): number {
-    return this.current;
-  }
-
-  advance(ms: number): void {
-    this.current += ms;
-  }
-
-  set(value: number): void {
-    this.current = value;
-  }
-}
-
 export function newId(prefix: string): string {
   return `${prefix}_${randomUUID().replaceAll("-", "")}`;
 }

@@ -93,18 +93,3 @@ class StructuredLogger implements Logger {
 export function createLogger(options: LoggerOptions = {}): Logger {
   return new StructuredLogger(options);
 }
-
-/** Collects records in memory; used by tests that assert on redaction. */
-export function createMemoryLogger(level: LogLevel = "debug"): {
-  logger: Logger;
-  records: LogRecord[];
-} {
-  const records: LogRecord[] = [];
-  const logger = createLogger({
-    level,
-    sink: (record) => {
-      records.push(record);
-    },
-  });
-  return { logger, records };
-}

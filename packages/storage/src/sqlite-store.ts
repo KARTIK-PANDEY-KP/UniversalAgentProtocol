@@ -2,7 +2,6 @@ import { DatabaseSync } from "node:sqlite";
 
 import {
   GatewayError,
-  newId,
   randomToken,
   sleep,
   type AuditEvent,
@@ -534,8 +533,4 @@ export function createInMemoryStore(now?: () => number): SqliteGatewayStore {
   const options: SqliteStoreOptions = { filename: ":memory:" };
   if (now) options.now = now;
   return new SqliteGatewayStore(options);
-}
-
-export function newRecordId(prefix: string): string {
-  return newId(prefix);
 }

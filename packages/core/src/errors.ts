@@ -146,8 +146,3 @@ export function toGatewayError(value: unknown): GatewayError {
   }
   return new GatewayError("INTERNAL", "Unknown error", { cause: value });
 }
-
-export function errorMessage(value: unknown): string {
-  if (value instanceof Error) return value.message;
-  return String(value);
-}

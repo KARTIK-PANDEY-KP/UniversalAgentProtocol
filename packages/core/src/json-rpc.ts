@@ -44,10 +44,6 @@ export interface JsonRpcFailure {
 }
 
 export type JsonRpcResponse = JsonRpcSuccess | JsonRpcFailure;
-export type JsonRpcMessage =
-  | JsonRpcRequest
-  | JsonRpcNotification
-  | JsonRpcResponse;
 
 /** Standard JSON-RPC 2.0 error codes plus the MCP reserved range. */
 export const JsonRpcErrorCode = {

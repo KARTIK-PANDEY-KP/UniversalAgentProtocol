@@ -45,10 +45,6 @@ export const jsonArray = (name: string): Column => ({
   from: (value) => (value === null ? [] : (JSON.parse(String(value)) as unknown)),
 });
 
-export function columnsOf<T>(mapper: Mapper<T>): string[] {
-  return Object.values(mapper).map((column) => (column as Column).name);
-}
-
 export function toRow<T>(mapper: Mapper<T>, entity: T): Record<string, SqlValue> {
   const row: Record<string, SqlValue> = {};
   for (const [field, column] of Object.entries(mapper) as [string, Column][]) {

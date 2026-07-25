@@ -88,17 +88,6 @@ export function accessTokenHash(accessToken: string): string {
   return createHash("sha256").update(accessToken, "ascii").digest("base64url");
 }
 
-/** The JWK thumbprint an authorization server binds the token to. */
-export function jwkThumbprint(publicJwk: Record<string, unknown>): string {
-  const canonical = JSON.stringify({
-    crv: publicJwk["crv"],
-    kty: publicJwk["kty"],
-    x: publicJwk["x"],
-    y: publicJwk["y"],
-  });
-  return createHash("sha256").update(canonical).digest("base64url");
-}
-
 /**
  * True when the authorization server advertises DPoP. The gateway only offers
  * sender-constrained tokens where they are supported, never as a guess.

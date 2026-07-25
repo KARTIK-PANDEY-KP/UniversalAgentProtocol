@@ -160,8 +160,6 @@ export const McpMethod = {
   RootsListChanged: "notifications/roots/list_changed",
 } as const;
 
-export type McpMethodName = (typeof McpMethod)[keyof typeof McpMethod];
-
 /** RFC 5424 severities, ordered as MCP orders them: least to most severe. */
 export const MCP_LOG_LEVELS = [
   "debug",

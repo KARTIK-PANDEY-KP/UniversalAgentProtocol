@@ -31,5 +31,3 @@ export const Metric = {
   DestructiveToolConfirmation: "destructive_tool_confirmation_total",
   TokenDecryptionFailed: "token_decryption_failed_total",
 } as const;
-
-export type MetricName = (typeof Metric)[keyof typeof Metric];

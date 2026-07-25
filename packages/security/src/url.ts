@@ -49,19 +49,6 @@ export function canonicalizeUrl(input: string | URL, policy: UrlPolicy): string 
   return url.toString().replace(/\/$/u, "");
 }
 
-/** Two URLs identify the same protected resource. */
-export function sameResource(
-  left: string,
-  right: string,
-  policy: UrlPolicy,
-): boolean {
-  try {
-    return canonicalizeUrl(left, policy) === canonicalizeUrl(right, policy);
-  } catch {
-    return false;
-  }
-}
-
 /**
  * Issuer comparison per RFC 8414: exact string match after removing a single
  * trailing slash, and never across different origins.
