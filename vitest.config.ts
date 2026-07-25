@@ -16,13 +16,20 @@ export default defineConfig({
       "@umg/mcp-server": pkg("mcp-server"),
       "@umg/federation": pkg("federation"),
       "@umg/gateway": pkg("gateway"),
+      "@umg/migration-cli": fileURLToPath(
+        new URL("./apps/migration-cli/src/index.ts", import.meta.url),
+      ),
       "@umg/conformance": fileURLToPath(
         new URL("./conformance/harness/src/index.ts", import.meta.url),
       ),
     },
   },
   test: {
-    include: ["conformance/tests/**/*.test.ts", "packages/**/test/**/*.test.ts"],
+    include: [
+      "conformance/tests/**/*.test.ts",
+      "packages/**/test/**/*.test.ts",
+      "apps/**/test/**/*.test.ts",
+    ],
     environment: "node",
     testTimeout: 30_000,
     hookTimeout: 30_000,

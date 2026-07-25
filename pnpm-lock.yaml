@@ -33,6 +33,15 @@ importers:
         specifier: workspace:*
         version: link:../../packages/observability
 
+  apps/migration-cli:
+    dependencies:
+      '@umg/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@umg/security':
+        specifier: workspace:*
+        version: link:../../packages/security
+
   conformance/harness:
     dependencies:
       '@umg/core':
@@ -68,6 +77,9 @@ importers:
       '@umg/gateway':
         specifier: workspace:*
         version: link:../../packages/gateway
+      '@umg/migration-cli':
+        specifier: workspace:*
+        version: link:../../apps/migration-cli
       '@umg/security':
         specifier: workspace:*
         version: link:../../packages/security

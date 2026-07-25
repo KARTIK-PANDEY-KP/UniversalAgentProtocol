@@ -12,6 +12,7 @@
     { "path": "../../packages/core" },
     { "path": "../../packages/federation" },
     { "path": "../../packages/gateway" },
-    { "path": "../../packages/security" }
+    { "path": "../../packages/security" },
+    { "path": "../../apps/migration-cli" }
   ]
 }

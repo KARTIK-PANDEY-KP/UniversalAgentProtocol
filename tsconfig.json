@@ -12,6 +12,7 @@
     { "path": "packages/gateway" },
     { "path": "apps/gateway-api" },
     { "path": "apps/background-worker" },
+    { "path": "apps/migration-cli" },
     { "path": "conformance/harness" },
     { "path": "conformance/tests" }
   ]

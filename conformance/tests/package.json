@@ -8,6 +8,7 @@
     "@umg/core": "workspace:*",
     "@umg/federation": "workspace:*",
     "@umg/gateway": "workspace:*",
+    "@umg/migration-cli": "workspace:*",
     "@umg/security": "workspace:*"
   }
 }

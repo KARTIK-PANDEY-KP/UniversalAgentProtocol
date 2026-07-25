@@ -335,7 +335,11 @@ export function registerRoutes(
     const results: Record<string, unknown>[] = [];
     const seen = new Set<string>();
     for (const entry of urls) {
-      const rawUrl = typeof entry === "string" ? entry : String((entry as { url?: string })?.url ?? "");
+      const item = typeof entry === "string" ? { url: entry } : (entry as {
+        url?: string;
+        alias?: string;
+      });
+      const rawUrl = String(item?.url ?? "");
       if (!rawUrl) continue;
       let canonical: string;
       try {
@@ -354,12 +358,13 @@ export function registerRoutes(
           tenantId: principal.tenantId,
           userId: principal.userId,
           mcpUrl: canonical,
+          // The name the user already gave this server in their client is a
+          // better alias than anything derived from the hostname.
+          ...(typeof item?.alias === "string" ? { alias: item.alias } : {}),
         });
         results.push({
+          ...toConnectionPayload(view, config.baseUrl),
           url: canonical,
-          status: view.status,
-          connection_id: view.connectionId,
-          alias: view.alias,
           authorize_url: `${config.baseUrl}/api/v1/connections/${view.connectionId}/authorize`,
         });
       } catch (error) {
