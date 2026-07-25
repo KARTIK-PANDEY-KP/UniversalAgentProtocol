@@ -1,0 +1,102 @@
+{
+  "$comment": [
+    "The architecture, in the only form that stays true: something CI can fail on.",
+    "ARCHITECTURE.md explains the reasoning; this file is what is enforced.",
+    "Every workspace package is a module with one owner, one public entry point,",
+    "and a tier. A module may only depend on modules of a strictly lower tier."
+  ],
+
+  "tiers": [
+    {
+      "name": "kernel",
+      "purpose": "Shared contracts and pure helpers. Depends on nothing.",
+      "modules": ["@umg/core"]
+    },
+    {
+      "name": "telemetry",
+      "purpose": "Structured logging and metrics, needed by everything below the apps.",
+      "modules": ["@umg/observability"]
+    },
+    {
+      "name": "platform",
+      "purpose": "Cross-cutting infrastructure primitives with no business meaning.",
+      "modules": ["@umg/security"]
+    },
+    {
+      "name": "persistence",
+      "purpose": "The database and the repository interfaces over it.",
+      "modules": ["@umg/storage"]
+    },
+    {
+      "name": "protocol",
+      "purpose": "Adapters that speak OAuth and MCP to the outside world.",
+      "modules": ["@umg/mcp-client", "@umg/mcp-server", "@umg/oauth"]
+    },
+    {
+      "name": "capability",
+      "purpose": "The gateway's business capability: federation, policy, catalogue.",
+      "modules": ["@umg/federation"]
+    },
+    {
+      "name": "composition",
+      "purpose": "Wires the modules together and owns the HTTP surface.",
+      "modules": ["@umg/gateway"]
+    },
+    {
+      "name": "entrypoint",
+      "purpose": "The deployables. No library may depend on these.",
+      "modules": ["@umg/gateway-api", "@umg/background-worker", "@umg/migration-cli"]
+    },
+    {
+      "name": "harness",
+      "purpose": "Mock upstreams and fixtures that stand a whole gateway up for a test.",
+      "modules": ["@umg/conformance"]
+    },
+    {
+      "name": "suite",
+      "purpose": "The conformance suite, which exercises the deployables through the harness.",
+      "modules": ["@umg/conformance-tests"]
+    }
+  ],
+
+  "sealedKernel": {
+    "$comment": [
+      "The shared kernel is the one module everything imports, so it is the one",
+      "module that must not grow a dependency. It may use pure Node builtins and",
+      "nothing else: an import of a driver, a socket or the filesystem here would",
+      "put infrastructure underneath every business rule in the repository."
+    ],
+    "module": "@umg/core",
+    "allowedBuiltins": ["node:crypto"]
+  },
+
+  "forbiddenFilenames": {
+    "$comment": [
+      "Names that attract unrelated code and become the file every branch edits.",
+      "A file should be named for what it is. If nothing fits, the code probably",
+      "belongs in the module that uses it."
+    ],
+    "names": [
+      "utils.ts",
+      "util.ts",
+      "helpers.ts",
+      "common.ts",
+      "misc.ts",
+      "shared.ts",
+      "constants.ts",
+      "types.ts",
+      "manager.ts"
+    ]
+  },
+
+  "requiredReadmeSections": [
+    "## Responsibility",
+    "## Does not own",
+    "## Public interface",
+    "## Depends on",
+    "## Data ownership",
+    "## Entry points",
+    "## Testing",
+    "## Owners"
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "dist",
+    "types": ["node"]
+  },
+  "include": ["**/*.ts"],
+  "exclude": ["dist"],
+  "references": [
+    { "path": "../harness" },
+    { "path": "../../packages/core" },
+    { "path": "../../packages/federation" },
+    { "path": "../../packages/gateway" },
+    { "path": "../../packages/security" },
+    { "path": "../../apps/migration-cli" }
+  ]
+}

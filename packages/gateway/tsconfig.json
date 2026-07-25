@@ -1,0 +1,33 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist"
+  },
+  "include": [
+    "src/**/*.ts"
+  ],
+  "references": [
+    {
+      "path": "../core"
+    },
+    {
+      "path": "../observability"
+    },
+    {
+      "path": "../security"
+    },
+    {
+      "path": "../storage"
+    },
+    {
+      "path": "../oauth"
+    },
+    {
+      "path": "../mcp-server"
+    },
+    {
+      "path": "../federation"
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "name": "universal-mcp-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.33.3",
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "tsc -b --clean",
+    "typecheck": "tsc -b",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "architecture": "node tooling/architecture/check.mjs",
+    "check": "pnpm architecture && pnpm typecheck && pnpm test",
+    "start": "node apps/gateway-api/dist/main.js",
+    "worker": "node apps/background-worker/dist/main.js",
+    "dev": "node --experimental-strip-types apps/gateway-api/src/main.ts",
+    "migrate": "node apps/migration-cli/dist/main.js"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.7",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
+  }
+}

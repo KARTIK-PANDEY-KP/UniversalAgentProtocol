@@ -1,0 +1,377 @@
+import { afterEach, describe, expect, it } from "vitest";
+
+import {
+  GatewayFixture,
+  GatewayMcpClient,
+  completeAuthorization,
+  connectUpstream,
+  startProtectedUpstream,
+  type ProtectedUpstream,
+} from "@umg/conformance";
+import type { MockAuthorizationServerOptions } from "@umg/conformance";
+
+/**
+ * Section 19.1 of the brief: the gateway must obtain a client identity from
+ * every registration mechanism a standards-compliant authorization server may
+ * offer, using the same generic code path each time.
+ */
+describe("OAuth client registration", () => {
+  const started: { stop(): Promise<void> }[] = [];
+
+  afterEach(async () => {
+    for (const resource of started.splice(0)) await resource.stop();
+  });
+
+  async function scenario(
+    authorizationServer: MockAuthorizationServerOptions,
+  ): Promise<{ gateway: GatewayFixture; upstream: ProtectedUpstream }> {
+    const upstream = await startProtectedUpstream({
+      authorizationServer,
+      mcpServer: { tools: [{ name: "ping" }] },
+    });
+    started.push(upstream);
+    const gateway = new GatewayFixture();
+    await gateway.start();
+    started.push(gateway);
+    return { gateway, upstream };
+  }
+
+  it("uses dynamic client registration when the server offers only DCR", async () => {
+    const { gateway, upstream } = await scenario({ supportsDcr: true });
+    const { connection } = await connectUpstream(gateway, upstream.url);
+
+    expect(connection.status).toBe("CONNECTED");
+    expect(upstream.authorizationServer.stats.registrations).toBe(1);
+
+    const registration = await registrationOf(gateway);
+    expect(registration.registrationType).toBe("DYNAMIC");
+    expect(registration.clientId).toMatch(/^dcr_/u);
+  });
+
+  it("uses its own metadata document when the server supports CIMD", async () => {
+    const { gateway, upstream } = await scenario({ supportsCimd: true });
+    const { connection } = await connectUpstream(gateway, upstream.url);
+
+    expect(connection.status).toBe("CONNECTED");
+    expect(upstream.authorizationServer.stats.registrations).toBe(0);
+
+    const registration = await registrationOf(gateway);
+    expect(registration.registrationType).toBe("CIMD");
+    expect(registration.clientId).toBe(`${gateway.baseUrl}/oauth/client-metadata.json`);
+
+    // The document the authorization server fetched must be self-consistent.
+    const document = (await (
+      await fetch(registration.clientId)
+    ).json()) as Record<string, unknown>;
+    expect(document["client_id"]).toBe(registration.clientId);
+    expect(document["redirect_uris"]).toEqual([`${gateway.baseUrl}/oauth/callback`]);
+  });
+
+  it("prefers CIMD over DCR when both are advertised", async () => {
+    const { gateway, upstream } = await scenario({
+      supportsCimd: true,
+      supportsDcr: true,
+    });
+    await connectUpstream(gateway, upstream.url);
+
+    expect(upstream.authorizationServer.stats.registrations).toBe(0);
+    expect((await registrationOf(gateway)).registrationType).toBe("CIMD");
+  });
+
+  it("authenticates with private_key_jwt when the server supports it", async () => {
+    const { gateway, upstream } = await scenario({
+      supportsCimd: true,
+      tokenEndpointAuthMethods: ["private_key_jwt"],
+    });
+    const { connection } = await connectUpstream(gateway, upstream.url);
+
+    expect(connection.status).toBe("CONNECTED");
+    const registration = await registrationOf(gateway);
+    expect(registration.tokenEndpointAuthMethod).toBe("private_key_jwt");
+    // A successful exchange means the mock verified the ES256 assertion
+    // against the gateway's published JWKS.
+    expect(upstream.authorizationServer.stats.codeExchanges).toBe(1);
+  });
+
+  it("authenticates a confidential DCR client with client_secret_basic", async () => {
+    const { gateway, upstream } = await scenario({
+      supportsDcr: true,
+      tokenEndpointAuthMethods: ["client_secret_basic"],
+    });
+    const { connection } = await connectUpstream(gateway, upstream.url);
+
+    expect(connection.status).toBe("CONNECTED");
+    expect((await registrationOf(gateway)).tokenEndpointAuthMethod).toBe(
+      "client_secret_basic",
+    );
+  });
+
+  it("authenticates a confidential DCR client with client_secret_post", async () => {
+    const { gateway, upstream } = await scenario({
+      supportsDcr: true,
+      tokenEndpointAuthMethods: ["client_secret_post"],
+    });
+    const { connection } = await connectUpstream(gateway, upstream.url);
+
+    expect(connection.status).toBe("CONNECTED");
+    expect((await registrationOf(gateway)).tokenEndpointAuthMethod).toBe(
+      "client_secret_post",
+    );
+  });
+
+  it("parks the connection when no automatic mechanism is available", async () => {
+    const { gateway, upstream } = await scenario({});
+    const created = await gateway.createConnection(upstream.url).catch((error: Error) => error);
+
+    // Creating the connection surfaces the terminal registration strategy as a
+    // clear, provider-neutral instruction rather than a stack trace.
+    expect(created).toBeInstanceOf(Error);
+    expect((created as Error).message).toContain("client_credentials_required");
+  });
+
+  it("uses preconfigured credentials an operator supplied for the issuer", async () => {
+    const { gateway, upstream } = await scenario({
+      tokenEndpointAuthMethods: ["client_secret_basic"],
+    });
+    upstream.authorizationServer.preregisterClient({
+      clientId: "portal-client",
+      clientSecret: "portal-secret",
+      tokenEndpointAuthMethod: "client_secret_basic",
+      redirectUris: [`${gateway.baseUrl}/oauth/callback`],
+    });
+
+    const configured = await gateway.api("POST", "/api/v1/oauth-client-configurations", {
+      issuer: upstream.authorizationServer.issuer,
+      client_id: "portal-client",
+      client_secret: "portal-secret",
+      token_endpoint_auth_method: "client_secret_basic",
+    });
+    expect(configured.status).toBe(201);
+
+    const { connection } = await connectUpstream(gateway, upstream.url);
+    expect(connection.status).toBe("CONNECTED");
+    const registration = await registrationOf(gateway);
+    expect(registration.registrationType).toBe("PRECONFIGURED");
+    expect(registration.clientId).toBe("portal-client");
+  });
+
+  it("fails registration when a restricted server demands an initial access token", async () => {
+    const { gateway, upstream } = await scenario({
+      supportsDcr: true,
+      initialAccessToken: "operator-issued-token",
+    });
+    const created = await gateway.createConnection(upstream.url).catch((error: Error) => error);
+
+    expect(created).toBeInstanceOf(Error);
+    expect(upstream.authorizationServer.stats.registrations).toBe(1);
+  });
+
+  it("registers dynamically with an initial access token an operator supplied", async () => {
+    const { gateway, upstream } = await scenario({
+      supportsDcr: true,
+      initialAccessToken: "operator-issued-token",
+    });
+    // No client_id: the operator has a registration token, not an OAuth client.
+    const configured = await gateway.api("POST", "/api/v1/oauth-client-configurations", {
+      issuer: upstream.authorizationServer.issuer,
+      initial_access_token: "operator-issued-token",
+      token_endpoint_auth_method: "client_secret_basic",
+    });
+    expect(configured.status).toBe(201);
+
+    const { connection } = await connectUpstream(gateway, upstream.url);
+    expect(connection.status).toBe("CONNECTED");
+
+    // Dynamic registration, not the preconfigured strategy claiming the row.
+    const registration = await registrationOf(gateway);
+    expect(registration.registrationType).toBe("DYNAMIC");
+    expect(upstream.authorizationServer.stats.registrations).toBe(1);
+  });
+
+  it("lets an operator review and withdraw the credentials they configured", async () => {
+    const { gateway, upstream } = await scenario({
+      tokenEndpointAuthMethods: ["client_secret_basic"],
+    });
+    const created = await gateway.api("POST", "/api/v1/oauth-client-configurations", {
+      issuer: upstream.authorizationServer.issuer,
+      client_id: "portal-client",
+      client_secret: "portal-secret",
+      token_endpoint_auth_method: "client_secret_basic",
+    });
+    const id = String(created.body["id"]);
+
+    const listed = await gateway.api("GET", "/api/v1/oauth-client-configurations");
+    expect(listed.status).toBe(200);
+    const entries = listed.body["oauth_client_configurations"] as Record<
+      string,
+      unknown
+    >[];
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      id,
+      client_id: "portal-client",
+      has_client_secret: true,
+      has_initial_access_token: false,
+    });
+    // Reviewing configuration must not hand the secret back out.
+    expect(JSON.stringify(listed.body)).not.toContain("portal-secret");
+
+    expect((await gateway.api("DELETE", `/api/v1/oauth-client-configurations/${id}`)).status)
+      .toBe(204);
+    const afterDelete = await gateway.api("GET", "/api/v1/oauth-client-configurations");
+    expect(afterDelete.body["oauth_client_configurations"]).toEqual([]);
+    // Deleting something that is already gone says so rather than reporting success.
+    expect((await gateway.api("DELETE", `/api/v1/oauth-client-configurations/${id}`)).status)
+      .toBe(404);
+  });
+
+  it("treats a connection without a refresh token as non-refreshable", async () => {
+    const { gateway, upstream } = await scenario({
+      supportsDcr: true,
+      issueRefreshToken: false,
+    });
+    const { connection } = await connectUpstream(gateway, upstream.url);
+
+    expect(connection.status).toBe("CONNECTED_NON_REFRESHABLE");
+  });
+
+  it("stores only the scopes the authorization server actually granted", async () => {
+    const { gateway, upstream } = await scenario({
+      supportsDcr: true,
+      fixedScopes: ["mcp:read"],
+    });
+    const { connection } = await connectUpstream(gateway, upstream.url);
+
+    const record = await connectionRecord(gateway, connection.connection_id);
+    expect(record.grantedScopes).toEqual(["mcp:read"]);
+  });
+
+  it("widens the grant when one tool needs a scope the token does not carry", async () => {
+    // The upstream only advertises read, so that is all the first grant covers.
+    const upstream = await startProtectedUpstream({
+      authorizationServer: { supportsDcr: true },
+      scopesSupported: ["mcp:read"],
+      mcpServer: {
+        tools: [{ name: "read_doc" }, { name: "edit_doc", requiredScope: "mcp:write" }],
+      },
+    });
+    started.push(upstream);
+    const gateway = new GatewayFixture();
+    await gateway.start();
+    started.push(gateway);
+
+    const { connection } = await connectUpstream(gateway, upstream.url, { alias: "docs" });
+    expect(connection.status).toBe("CONNECTED");
+
+    const client = new GatewayMcpClient({
+      baseUrl: gateway.baseUrl,
+      apiKey: gateway.apiKey,
+    });
+    await client.initialize();
+    expect(await client.callTool("docs.read_doc")).toBeDefined();
+
+    // The write tool is refused, and the refusal is a reconnect prompt rather
+    // than an opaque failure.
+    await expect(client.callTool("docs.edit_doc")).rejects.toThrow(/additional scopes/iu);
+
+    const after = await connectionRecord(gateway, connection.connection_id);
+    expect(after.status).toBe("REAUTH_REQUIRED");
+    expect([...after.requestedScopes].sort()).toEqual(["mcp:read", "mcp:write"]);
+    // The grant was never touched; only a wider one was asked for.
+    expect(after.grantedScopes).toEqual(["mcp:read"]);
+
+    // Reconnecting asks for the wider set, and the same tool now works.
+    await completeAuthorization(await gateway.authorizeUrl(connection.connection_id), {
+      gatewayApiKey: gateway.apiKey,
+      gatewayBaseUrl: gateway.baseUrl,
+    });
+    const widened = await connectionRecord(gateway, connection.connection_id);
+    expect(widened.status).toBe("CONNECTED");
+    expect([...widened.grantedScopes].sort()).toEqual(["mcp:read", "mcp:write"]);
+    expect(await client.callTool("docs.edit_doc")).toBeDefined();
+    await client.close();
+  });
+
+  it("discovers metadata published at the OpenID Connect location", async () => {
+    const { gateway, upstream } = await scenario({
+      supportsDcr: true,
+      discoveryStyle: "openid",
+    });
+    const { connection } = await connectUpstream(gateway, upstream.url);
+
+    expect(connection.status).toBe("CONNECTED");
+  });
+
+  it("signs a fresh assertion for each attempt at the token endpoint", async () => {
+    // The DPoP nonce round trip sends the token request twice. A server that
+    // remembers assertion identifiers rejects the second if the client reuses
+    // the first one's jti, which would make the prescribed retry fail.
+    const { gateway, upstream } = await scenario({
+      supportsDcr: true,
+      tokenEndpointAuthMethods: ["private_key_jwt"],
+      supportsDpop: true,
+      requireDpopNonce: true,
+      rejectReplayedAssertions: true,
+    });
+
+    const { connection } = await connectUpstream(gateway, upstream.url);
+    expect(connection.status).toBe("CONNECTED");
+    expect(upstream.authorizationServer.stats.tokenRequests).toBeGreaterThan(1);
+  });
+
+  it("reports a failed revocation instead of reporting success", async () => {
+    const { gateway, upstream } = await scenario({
+      supportsDcr: true,
+      supportsRevocation: true,
+      revocationStatus: 503,
+    });
+    const { connection } = await connectUpstream(gateway, upstream.url);
+    expect(connection.status).toBe("CONNECTED");
+
+    // Disconnecting still clears local state -- the point is that the failure
+    // reaches the log rather than being read as a successful revocation.
+    const response = await fetch(
+      `${gateway.baseUrl}/api/v1/connections/${connection.connection_id}`,
+      { method: "DELETE", headers: { authorization: `Bearer ${gateway.apiKey}` } },
+    );
+    expect(response.status).toBe(204);
+    expect(upstream.authorizationServer.stats.revocations).toBe(1);
+
+    const record = await gateway.services.store.connections.get(
+      gateway.tenantId,
+      connection.connection_id,
+    );
+    expect(record ?? null).toBeNull();
+  });
+});
+
+async function registrationOf(gateway: GatewayFixture): Promise<{
+  registrationType: string;
+  clientId: string;
+  tokenEndpointAuthMethod: string;
+}> {
+  const connections = await gateway.services.store.connections.listByTenant(
+    gateway.tenantId,
+  );
+  const connection = connections[0];
+  if (!connection?.oauthClientRegistrationId) {
+    throw new Error("The connection has no client registration");
+  }
+  const record = await gateway.services.store.registrations.get(
+    connection.oauthClientRegistrationId,
+  );
+  if (!record) throw new Error("The client registration record is missing");
+  return record;
+}
+
+async function connectionRecord(
+  gateway: GatewayFixture,
+  connectionId: string,
+): Promise<{ grantedScopes: string[]; requestedScopes: string[]; status: string }> {
+  const record = await gateway.services.store.connections.get(
+    gateway.tenantId,
+    connectionId,
+  );
+  if (!record) throw new Error("The connection record is missing");
+  return record;
+}

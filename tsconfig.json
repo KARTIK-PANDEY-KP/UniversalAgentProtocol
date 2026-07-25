@@ -1,0 +1,23 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/core" },
+    { "path": "packages/observability" },
+    { "path": "packages/security" },
+    { "path": "packages/security/test" },
+    { "path": "packages/storage" },
+    { "path": "packages/storage/test" },
+    { "path": "packages/oauth" },
+    { "path": "packages/oauth/test" },
+    { "path": "packages/mcp-client" },
+    { "path": "packages/mcp-server" },
+    { "path": "packages/federation" },
+    { "path": "packages/gateway" },
+    { "path": "apps/gateway-api" },
+    { "path": "apps/background-worker" },
+    { "path": "apps/migration-cli" },
+    { "path": "apps/migration-cli/test" },
+    { "path": "conformance/harness" },
+    { "path": "conformance/tests" }
+  ]
+}

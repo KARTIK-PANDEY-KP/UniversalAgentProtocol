@@ -1,0 +1,851 @@
+import {
+  GatewayError,
+  clampText,
+  newId,
+  schemaHash,
+  toJsonObject,
+  uniqueStrings,
+  type Clock,
+  type ConnectionOwnerType,
+  type DiscoveredPrompt,
+  type DiscoveredResource,
+  type DiscoveredTool,
+  type JsonObject,
+  type McpImplementation,
+  type McpServerRecord,
+  type UpstreamConnection,
+} from "@umg/core";
+import { probeMcpEndpoint } from "@umg/mcp-client";
+import {
+  parseWwwAuthenticate,
+  selectBearerChallenge,
+  type GatewayIdentity,
+  type OAuthDiscoveryService,
+  type OAuthTokenManager,
+  type RegistrationSelector,
+} from "@umg/oauth";
+import { Metric, type Logger, type MetricsRegistry } from "@umg/observability";
+import { canonicalizeUrl, type CredentialVault, type SafeFetcher } from "@umg/security";
+import type { GatewayStore, ToolSyncResult } from "@umg/storage";
+
+import type { AuditService } from "./audit.js";
+import {
+  defaultAliasFor,
+  gatewayPromptName,
+  gatewayResourceUri,
+  gatewayToolName,
+  isValidAlias,
+  sanitizeAlias,
+} from "./naming.js";
+import type { PolicyEngine } from "./policy-engine.js";
+import { classifyTool } from "./tool-classifier.js";
+import { CATALOGUE_SESSION } from "./upstream-sessions.js";
+import type { UpstreamSessionManager } from "./upstream-sessions.js";
+
+/** Which halves of a catalogue moved, so only the relevant clients are woken. */
+export interface CatalogueChange {
+  tools: boolean;
+  resources: boolean;
+  prompts: boolean;
+}
+
+export interface ConnectionServiceDeps {
+  store: GatewayStore;
+  vault: CredentialVault;
+  fetcher: SafeFetcher;
+  discovery: OAuthDiscoveryService;
+  registrations: RegistrationSelector;
+  tokenManager: OAuthTokenManager;
+  sessions: UpstreamSessionManager;
+  policy: PolicyEngine;
+  audit: AuditService;
+  clock: Clock;
+  logger: Logger;
+  metrics: MetricsRegistry;
+  identity: GatewayIdentity;
+  clientInfo: McpImplementation;
+  allowHttp: boolean;
+  onCatalogueChanged?(tenantId: string, changed: CatalogueChange): void;
+}
+
+/**
+ * Who is asking. Every control-plane operation is checked against this, not
+ * only against the tenant: members of one workspace must not reach each
+ * other's personal connections.
+ */
+export interface ControlPlaneActor {
+  tenantId: string;
+  userId: string;
+}
+
+export interface CreateConnectionInput {
+  tenantId: string;
+  userId: string;
+  mcpUrl: string;
+  alias?: string;
+  displayName?: string;
+  ownerType?: ConnectionOwnerType;
+  /** Generic secret headers for MCP servers that do not implement OAuth. */
+  staticHeaders?: Record<string, string>;
+}
+
+export interface ConnectionView {
+  connectionId: string;
+  alias: string;
+  status: UpstreamConnection["status"];
+  mcpUrl: string;
+  displayName: string;
+  serverName: string | null;
+  toolCount: number;
+  lastError: string | null;
+  authorizationUrl?: string;
+}
+
+export class ConnectionService {
+  constructor(private readonly deps: ConnectionServiceDeps) {}
+
+  async createConnection(input: CreateConnectionInput): Promise<ConnectionView> {
+    const canonicalUrl = canonicalizeUrl(input.mcpUrl, {
+      allowHttp: this.deps.allowHttp,
+    });
+
+    const existingServer = await this.deps.store.mcpServers.findByCanonicalUrl(
+      input.tenantId,
+      canonicalUrl,
+    );
+    if (existingServer) {
+      const connections = await this.deps.store.connections.listByTenant(input.tenantId);
+      const existing = connections.find(
+        (connection) => connection.mcpServerId === existingServer.id,
+      );
+      if (existing) return this.view(existing);
+    }
+
+    const probe = await probeMcpEndpoint({
+      url: canonicalUrl,
+      fetcher: this.deps.fetcher,
+      logger: this.deps.logger,
+      metrics: this.deps.metrics,
+      clientInfo: this.deps.clientInfo,
+      ...(input.staticHeaders
+        ? { authHeaders: async () => input.staticHeaders as Record<string, string> }
+        : {}),
+    });
+
+    const now = this.deps.clock.now();
+    const server: McpServerRecord =
+      existingServer ??
+      (await this.deps.store.mcpServers.create({
+        id: newId("srv"),
+        tenantId: input.tenantId,
+        canonicalUrl,
+        originalUrl: input.mcpUrl,
+        displayName:
+          input.displayName ??
+          probe.initializeResult?.serverInfo?.name ??
+          new URL(canonicalUrl).host,
+        authorizationRequired: probe.authorizationRequired,
+        protectedResourceMetadataUrl: null,
+        canonicalResource: canonicalUrl,
+        selectedAuthorizationServer: null,
+        transportType: probe.transportType,
+        protocolVersion: probe.initializeResult?.protocolVersion ?? null,
+        capabilitiesJson: probe.initializeResult
+          ? toJsonObject(probe.initializeResult.capabilities)
+          : null,
+        metadataJson: null,
+        status: "ACTIVE",
+        createdAt: now,
+        updatedAt: now,
+      }));
+
+    const taken = (await this.deps.store.connections.listByTenant(input.tenantId)).map(
+      (connection) => connection.alias,
+    );
+    const requested = input.alias ? sanitizeAlias(input.alias) : null;
+    const alias =
+      requested && !taken.includes(requested)
+        ? requested
+        : defaultAliasFor(canonicalUrl, taken);
+    if (!isValidAlias(alias)) {
+      throw new GatewayError("INVALID_REQUEST", `Invalid alias: ${alias}`);
+    }
+
+    const connection = await this.deps.store.connections.create({
+      id: newId("conn"),
+      tenantId: input.tenantId,
+      ownerType: input.ownerType ?? "USER",
+      ownerId: input.ownerType === "WORKSPACE" ? input.tenantId : input.userId,
+      mcpServerId: server.id,
+      oauthIssuerId: null,
+      oauthClientRegistrationId: null,
+      alias,
+      grantedScopes: [],
+      requestedScopes: [],
+      accessTokenEncrypted: null,
+      refreshTokenEncrypted: null,
+      staticHeadersEncrypted: input.staticHeaders
+        ? await this.deps.vault.encrypt(
+            { tenantId: input.tenantId, purpose: "static_headers" },
+            JSON.stringify(input.staticHeaders),
+          )
+        : null,
+      tokenType: null,
+      accessTokenExpiresAt: null,
+      refreshTokenExpiresAt: null,
+      tokenVersion: 1,
+      dpopKeyReference: null,
+      status: probe.authorizationRequired ? "AUTHORIZATION_REQUIRED" : "CONNECTED",
+      lastRefreshAt: null,
+      lastSuccessAt: null,
+      lastErrorCode: null,
+      lastErrorMessageRedacted: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    await this.deps.audit.record({
+      tenantId: input.tenantId,
+      userId: input.userId,
+      connectionId: connection.id,
+      operation: "connection.create",
+      resultStatus: "OK",
+      detail: { alias, canonicalUrl, authorizationRequired: probe.authorizationRequired },
+    });
+
+    if (!probe.authorizationRequired) {
+      await this.syncCatalogue(connection);
+      return this.view(await this.reload(connection));
+    }
+
+    const prepared = await this.prepareAuthorization({
+      connection,
+      server,
+      userId: input.userId,
+      wwwAuthenticate: probe.wwwAuthenticate ?? null,
+    });
+    return { ...(await this.view(await this.reload(connection))), ...prepared };
+  }
+
+  /** Builds a fresh authorization URL for a pending or expired connection. */
+  async startAuthorization(params: {
+    tenantId: string;
+    userId: string;
+    connectionId: string;
+    returnTo?: string | null;
+  }): Promise<{ authorizationUrl: string }> {
+    const connection = await this.requireVisible(params, params.connectionId);
+    const server = await this.requireServer(connection);
+    const prepared = await this.prepareAuthorization({
+      connection,
+      server,
+      userId: params.userId,
+      wwwAuthenticate: null,
+      returnTo: params.returnTo ?? null,
+    });
+    if (!prepared.authorizationUrl) {
+      throw new GatewayError(
+        "CLIENT_CREDENTIALS_REQUIRED",
+        "This authorization server requires an OAuth client ID.",
+      );
+    }
+    return { authorizationUrl: prepared.authorizationUrl };
+  }
+
+  /**
+   * Runs discovery, selects a client registration mechanism and creates the
+   * PKCE transaction. Every step is generic: nothing here knows which product
+   * sits behind the MCP endpoint.
+   */
+  private async prepareAuthorization(params: {
+    connection: UpstreamConnection;
+    server: McpServerRecord;
+    userId: string;
+    wwwAuthenticate: string | null;
+    returnTo?: string | null;
+  }): Promise<{ authorizationUrl?: string }> {
+    const { connection, server } = params;
+    const challenge = selectBearerChallenge(
+      parseWwwAuthenticate(params.wwwAuthenticate ?? undefined),
+    );
+
+    const resourceDiscovery = await this.deps.discovery.discoverProtectedResource(
+      server.canonicalUrl,
+      challenge,
+    );
+    const authorizationServers = resourceDiscovery.metadata.authorization_servers ?? [];
+    const issuer =
+      server.selectedAuthorizationServer &&
+      authorizationServers.includes(server.selectedAuthorizationServer)
+        ? server.selectedAuthorizationServer
+        : authorizationServers[0];
+    if (!issuer) {
+      throw new GatewayError(
+        "DISCOVERY_FAILED",
+        "The MCP server advertises no authorization server",
+      );
+    }
+
+    const { record: issuerRecord, metadata } =
+      await this.deps.discovery.discoverAuthorizationServer(issuer);
+
+    // Credentials are bound to the issuer: if the resource moved to another
+    // authorization server the old grant must not be reused.
+    if (
+      connection.oauthIssuerId !== null &&
+      connection.oauthIssuerId !== issuerRecord.id
+    ) {
+      await this.deps.store.connections.update(connection.id, {
+        accessTokenEncrypted: null,
+        refreshTokenEncrypted: null,
+        oauthClientRegistrationId: null,
+        tokenVersion: connection.tokenVersion + 1,
+      });
+    }
+
+    await this.deps.store.mcpServers.update(server.tenantId, server.id, {
+      authorizationRequired: true,
+      protectedResourceMetadataUrl: resourceDiscovery.metadataUrl,
+      canonicalResource: resourceDiscovery.metadata.resource,
+      selectedAuthorizationServer: issuerRecord.issuer,
+      metadataJson: toJsonObject(resourceDiscovery.metadata),
+    });
+
+    const scopes = uniqueStrings([
+      ...(challenge?.params["scope"]?.split(" ") ?? []),
+      ...(resourceDiscovery.metadata.scopes_supported ?? []),
+      // Carries forward anything a previous call found the grant too narrow for.
+      ...connection.requestedScopes,
+    ]).filter((scope) => scope.length > 0);
+
+    const registration = await this.deps.registrations
+      .resolve({
+        tenantId: connection.tenantId,
+        issuerRecord,
+        metadata,
+        redirectUri: this.deps.identity.redirectUri,
+        requestedScopes: scopes,
+      })
+      .catch(async (error: unknown) => {
+        if (
+          error instanceof GatewayError &&
+          error.code === "CLIENT_CREDENTIALS_REQUIRED"
+        ) {
+          await this.deps.store.connections.update(connection.id, {
+            oauthIssuerId: issuerRecord.id,
+            status: "CLIENT_CREDENTIALS_REQUIRED",
+            lastErrorCode: "client_credentials_required",
+            lastErrorMessageRedacted:
+              "This authorization server requires an OAuth client ID.",
+          });
+        }
+        throw error;
+      });
+
+    await this.deps.store.connections.update(connection.id, {
+      oauthIssuerId: issuerRecord.id,
+      oauthClientRegistrationId: registration.registrationId,
+      status: "AUTHORIZATION_REQUIRED",
+    });
+
+    const transaction = await this.deps.tokenManager.createAuthorizationTransaction({
+      tenantId: connection.tenantId,
+      userId: params.userId,
+      connectionId: connection.id,
+      issuerRecord,
+      metadata,
+      registration,
+      scopes,
+      resource: resourceDiscovery.metadata.resource,
+      returnTo: params.returnTo ?? null,
+    });
+    return { authorizationUrl: transaction.authorizationUrl };
+  }
+
+  /**
+   * Brings a catalogue online after a successful OAuth callback. The
+   * transaction the callback consumed is the authorization for this, so there
+   * is no acting user to check; the user-facing route is `refresh`.
+   */
+  async activateConnection(
+    tenantId: string,
+    connectionId: string,
+  ): Promise<ToolSyncResult> {
+    const connection = await this.requireConnection(tenantId, connectionId);
+    await this.detectTransport(connection);
+    return this.syncCatalogue(connection);
+  }
+
+  /** Rediscovers a catalogue on request from someone who can see it. */
+  async refresh(actor: ControlPlaneActor, connectionId: string): Promise<ToolSyncResult> {
+    const connection = await this.requireVisible(actor, connectionId);
+    await this.detectTransport(connection);
+    return this.syncCatalogue(connection);
+  }
+
+  /**
+   * Re-probes an authorized endpoint. Before authorization every transport
+   * answers with the same 401, so the transport and capabilities recorded at
+   * creation time are only a guess; this is the first moment the gateway can
+   * observe what the server actually speaks.
+   */
+  private async detectTransport(connection: UpstreamConnection): Promise<void> {
+    const server = await this.requireServer(connection);
+    const probe = await probeMcpEndpoint({
+      url: server.canonicalUrl,
+      fetcher: this.deps.fetcher,
+      logger: this.deps.logger,
+      metrics: this.deps.metrics,
+      clientInfo: this.deps.clientInfo,
+      authHeaders: (request) =>
+        this.deps.tokenManager.authorizationHeaders(
+          { tenantId: connection.tenantId, connectionId: connection.id },
+          request,
+        ),
+      onDpopNonce: (nonce) =>
+        this.deps.tokenManager.rememberResourceNonce(connection.id, nonce),
+    }).catch((error: unknown) => {
+      // The transport recorded before authorization was a guess, and it stays
+      // a guess if this fails. The catalogue sync that follows will surface a
+      // real failure; this only costs accuracy in what we report.
+      this.deps.logger.warn("Could not re-probe an authorized upstream", {
+        connectionId: connection.id,
+        error: (error as Error).message,
+      });
+      return null;
+    });
+    if (!probe?.initializeResult) return;
+    await this.deps.store.mcpServers.update(server.tenantId, server.id, {
+      transportType: probe.transportType,
+      protocolVersion: probe.initializeResult.protocolVersion,
+      capabilitiesJson: toJsonObject(probe.initializeResult.capabilities),
+      displayName:
+        server.displayName === new URL(server.canonicalUrl).host
+          ? (probe.initializeResult.serverInfo?.name ?? server.displayName)
+          : server.displayName,
+    });
+  }
+
+  /**
+   * Rediscovers tools, resources and prompts. Discovery failures degrade a
+   * single connection instead of taking down the whole gateway.
+   */
+  async syncCatalogue(connection: UpstreamConnection): Promise<ToolSyncResult> {
+    const started = this.deps.clock.now();
+    try {
+      const client = await this.deps.sessions.acquire(connection, CATALOGUE_SESSION);
+      const [tools, resources, templates, prompts] = await Promise.all([
+        client.listTools(),
+        client.listResources(),
+        client.listResourceTemplates(),
+        client.listPrompts(),
+      ]);
+
+      const takenNames = new Set<string>();
+      const toolRecords: DiscoveredTool[] = this.firstOfEach(
+        tools,
+        (tool) => tool.name,
+        connection,
+        "tools",
+      ).map((tool) => {
+        const gatewayName = gatewayToolName(connection.alias, tool.name, takenNames);
+        takenNames.add(gatewayName);
+        const annotations = tool.annotations ? toJsonObject(tool.annotations) : null;
+        const riskLevel = classifyTool(tool.name, tool.description ?? null, annotations);
+        return {
+          id: newId("tool"),
+          tenantId: connection.tenantId,
+          connectionId: connection.id,
+          upstreamName: tool.name,
+          gatewayName,
+          description: tool.description ?? null,
+          inputSchemaJson: toJsonObject(tool.inputSchema ?? { type: "object" }),
+          outputSchemaJson: tool.outputSchema ? toJsonObject(tool.outputSchema) : null,
+          annotationsJson: annotations,
+          schemaHash: schemaHash({
+            input: tool.inputSchema ?? null,
+            output: tool.outputSchema ?? null,
+            description: tool.description ?? null,
+          }),
+          enabled: this.deps.policy.shouldExposeTool(riskLevel, annotations),
+          riskLevel,
+          discoveredAt: started,
+          lastSeenAt: started,
+        };
+      });
+
+      // Resources and templates share one table and one uniqueness rule, so
+      // they are deduplicated together rather than one list at a time.
+      const resourceRecords: DiscoveredResource[] = this.firstOfEach(
+        [
+          ...resources.map((resource) => ({
+            id: newId("res"),
+            tenantId: connection.tenantId,
+            connectionId: connection.id,
+            upstreamUri: resource.uri,
+            gatewayUri: gatewayResourceUri(connection.alias, resource.uri),
+            name: resource.name,
+            description: resource.description ?? null,
+            mimeType: resource.mimeType ?? null,
+            isTemplate: false,
+            lastSeenAt: started,
+          })),
+          ...templates.map((template) => ({
+            id: newId("res"),
+            tenantId: connection.tenantId,
+            connectionId: connection.id,
+            upstreamUri: template.uriTemplate,
+            gatewayUri: gatewayResourceUri(connection.alias, template.uriTemplate),
+            name: template.name,
+            description: template.description ?? null,
+            mimeType: template.mimeType ?? null,
+            isTemplate: true,
+            lastSeenAt: started,
+          })),
+        ],
+        (resource) => resource.upstreamUri,
+        connection,
+        "resources",
+      );
+
+      const promptRecords: DiscoveredPrompt[] = this.firstOfEach(
+        prompts,
+        (prompt) => prompt.name,
+        connection,
+        "prompts",
+      ).map((prompt) => ({
+        id: newId("prm"),
+        tenantId: connection.tenantId,
+        connectionId: connection.id,
+        upstreamName: prompt.name,
+        gatewayName: gatewayPromptName(connection.alias, prompt.name),
+        description: prompt.description ?? null,
+        argumentsJson: prompt.arguments
+          ? ({ arguments: prompt.arguments } as unknown as JsonObject)
+          : null,
+        lastSeenAt: started,
+      }));
+
+      const sync = await this.deps.store.tools.sync(connection.id, toolRecords, started);
+      const resourcesChanged = await this.deps.store.resources.sync(
+        connection.id,
+        resourceRecords,
+      );
+      const promptsChanged = await this.deps.store.prompts.sync(connection.id, promptRecords);
+
+      if (sync.changed.length > 0) {
+        this.deps.metrics.counter(Metric.McpToolSchemaChanged, {
+          alias: connection.alias,
+        });
+      }
+
+      await this.deps.store.connections.update(connection.id, {
+        status:
+          connection.status === "CONNECTED_NON_REFRESHABLE"
+            ? "CONNECTED_NON_REFRESHABLE"
+            : "CONNECTED",
+        lastSuccessAt: this.deps.clock.now(),
+        lastErrorCode: null,
+        lastErrorMessageRedacted: null,
+      });
+
+      const toolsChanged = sync.added.length + sync.removed.length + sync.changed.length > 0;
+      if (toolsChanged || resourcesChanged || promptsChanged) {
+        this.deps.onCatalogueChanged?.(connection.tenantId, {
+          tools: toolsChanged,
+          resources: resourcesChanged,
+          prompts: promptsChanged,
+        });
+      }
+      return sync;
+    } catch (error) {
+      const gatewayError =
+        error instanceof GatewayError
+          ? error
+          : new GatewayError("UPSTREAM_UNAVAILABLE", (error as Error).message);
+      await this.deps.store.connections.update(connection.id, {
+        status:
+          gatewayError.code === "AUTHORIZATION_REQUIRED"
+            ? "REAUTH_REQUIRED"
+            : "DEGRADED",
+        lastErrorCode: gatewayError.code,
+        lastErrorMessageRedacted: clampText(gatewayError.message, 200),
+      });
+      this.deps.logger.warn("Catalogue discovery failed", {
+        connectionId: connection.id,
+        alias: connection.alias,
+        code: gatewayError.code,
+      });
+      throw gatewayError;
+    }
+  }
+
+  /**
+   * Keeps the first entry of each upstream identity. A server that lists the
+   * same tool twice is broken, but the gateway stores one row per upstream
+   * name, so passing the repeat along would fail the whole catalogue on a
+   * uniqueness violation and leave the connection with no tools at all.
+   */
+  private firstOfEach<T>(
+    items: readonly T[],
+    identity: (item: T) => string,
+    connection: UpstreamConnection,
+    kind: string,
+  ): T[] {
+    const seen = new Set<string>();
+    const kept: T[] = [];
+    for (const item of items) {
+      const key = identity(item);
+      if (seen.has(key)) {
+        this.deps.logger.warn("Upstream listed the same entry twice", {
+          connectionId: connection.id,
+          alias: connection.alias,
+          kind,
+          identity: clampText(key, 120),
+        });
+        continue;
+      }
+      seen.add(key);
+      kept.push(item);
+    }
+    return kept;
+  }
+
+  async rename(
+    actor: ControlPlaneActor,
+    connectionId: string,
+    alias: string,
+  ): Promise<ConnectionView> {
+    const connection = await this.requireVisible(actor, connectionId);
+    const normalized = sanitizeAlias(alias);
+    const taken = (await this.deps.store.connections.listByTenant(actor.tenantId))
+      .filter((candidate) => candidate.id !== connectionId)
+      .map((candidate) => candidate.alias);
+    if (taken.includes(normalized)) {
+      throw new GatewayError("CONFLICT", `The alias ${normalized} is already in use`);
+    }
+    const updated = await this.deps.store.connections.update(connection.id, {
+      alias: normalized,
+    });
+    // Every tool, resource and prompt is namespaced by the alias, so the
+    // rename only takes effect once the catalogue is rebuilt. An upstream that
+    // is down leaves the old names in place, which is confusing enough to say.
+    await this.syncCatalogue(updated).catch((error: unknown) => {
+      this.deps.logger.warn("Renamed a connection but could not renamespace it", {
+        connectionId: connection.id,
+        alias: normalized,
+        error: (error as Error).message,
+      });
+    });
+    return this.view(await this.reload(updated));
+  }
+
+  /** Lists the tools of every connection the actor can see. */
+  async listTools(actor: ControlPlaneActor): Promise<DiscoveredTool[]> {
+    const visible = new Set(
+      (
+        await this.deps.store.connections.listVisible(actor.tenantId, actor.userId)
+      ).map((connection) => connection.id),
+    );
+    const tools = await this.deps.store.tools.listByTenant(actor.tenantId);
+    return tools.filter((tool) => visible.has(tool.connectionId));
+  }
+
+  async setToolEnabled(
+    actor: ControlPlaneActor,
+    toolId: string,
+    enabled: boolean,
+  ): Promise<void> {
+    const tool = (await this.listTools(actor)).find(
+      (candidate) => candidate.id === toolId,
+    );
+    if (!tool) throw new GatewayError("NOT_FOUND", `Unknown tool: ${toolId}`);
+    await this.deps.store.tools.setEnabled(actor.tenantId, toolId, enabled);
+    this.deps.onCatalogueChanged?.(actor.tenantId, {
+      tools: true,
+      resources: false,
+      prompts: false,
+    });
+  }
+
+  /**
+   * Takes a connection out of service, or puts it back. Disabling is the
+   * answer to an upstream that has started misbehaving: it stops serving
+   * immediately without discarding the grant, which disconnecting would, and
+   * which would cost the user another trip through the provider's consent
+   * screen to undo.
+   */
+  async setEnabled(
+    actor: ControlPlaneActor,
+    connectionId: string,
+    enabled: boolean,
+  ): Promise<ConnectionView> {
+    const connection = await this.requireVisible(actor, connectionId);
+    if (enabled === (connection.status !== "DISABLED")) {
+      return this.view(connection);
+    }
+
+    if (!enabled) {
+      const disabled = await this.deps.store.connections.update(connection.id, {
+        status: "DISABLED",
+      });
+      // Sessions already open would otherwise keep serving calls through a
+      // connection the operator has just taken away.
+      await this.deps.sessions.releaseConnection(connection.id);
+      this.deps.onCatalogueChanged?.(actor.tenantId, {
+        tools: true,
+        resources: true,
+        prompts: true,
+      });
+      await this.deps.audit.record({
+        tenantId: actor.tenantId,
+        userId: actor.userId,
+        connectionId: connection.id,
+        operation: "connection.disable",
+        resultStatus: "OK",
+        detail: { alias: connection.alias },
+      });
+      return this.view(disabled);
+    }
+
+    const restored = await this.deps.store.connections.update(connection.id, {
+      // What the connection was before it was disabled is not recorded, so it
+      // is re-derived from the credential it holds: an OAuth grant that cannot
+      // renew itself is worth saying so, because the user will have to
+      // re-authorize it, while a server that needed no OAuth is simply
+      // connected. A wrong guess is corrected by the sync below.
+      status:
+        connection.accessTokenEncrypted && !connection.refreshTokenEncrypted
+          ? "CONNECTED_NON_REFRESHABLE"
+          : "CONNECTED",
+    });
+    // The catalogue is as old as the outage, and the upstream may be gone. A
+    // failed sync leaves the connection DEGRADED, which is the truth.
+    await this.syncCatalogue(restored).catch((error: unknown) => {
+      this.deps.logger.warn("Re-enabled a connection but could not rediscover it", {
+        connectionId: connection.id,
+        alias: connection.alias,
+        error: clampText((error as Error).message, 200),
+      });
+    });
+    await this.deps.audit.record({
+      tenantId: actor.tenantId,
+      userId: actor.userId,
+      connectionId: connection.id,
+      operation: "connection.enable",
+      resultStatus: "OK",
+      detail: { alias: connection.alias },
+    });
+    return this.view(await this.reload(restored));
+  }
+
+  async disconnect(actor: ControlPlaneActor, connectionId: string): Promise<void> {
+    const { tenantId } = actor;
+    const connection = await this.requireVisible(actor, connectionId);
+    // An authorization server that cannot be reached must not strand the
+    // connection here: the local records still go, and the operator is told
+    // that the grant may still be live on the provider's side.
+    await this.deps.tokenManager
+      .revokeConnection({ tenantId, connectionId })
+      .catch((error: unknown) => {
+        this.deps.logger.warn("Could not revoke the upstream grant before deleting", {
+          tenantId,
+          connectionId,
+          error: clampText((error as Error).message, 200),
+        });
+      });
+    await this.deps.sessions.releaseConnection(connectionId);
+    await this.deps.store.tools.deleteByConnection(connectionId);
+    await this.deps.store.resources.deleteByConnection(connectionId);
+    await this.deps.store.prompts.deleteByConnection(connectionId);
+    await this.deps.store.connections.delete(tenantId, connectionId);
+    this.deps.onCatalogueChanged?.(tenantId, {
+      tools: true,
+      resources: true,
+      prompts: true,
+    });
+    await this.deps.audit.record({
+      tenantId,
+      connectionId,
+      operation: "connection.delete",
+      resultStatus: "OK",
+      detail: { alias: connection.alias },
+    });
+  }
+
+  async listConnections(tenantId: string, userId: string): Promise<ConnectionView[]> {
+    const connections = await this.deps.store.connections.listVisible(tenantId, userId);
+    return Promise.all(connections.map((connection) => this.view(connection)));
+  }
+
+  async getConnection(
+    actor: ControlPlaneActor,
+    connectionId: string,
+  ): Promise<ConnectionView> {
+    return this.view(await this.requireVisible(actor, connectionId));
+  }
+
+  private async view(connection: UpstreamConnection): Promise<ConnectionView> {
+    const server = await this.deps.store.mcpServers.get(
+      connection.tenantId,
+      connection.mcpServerId,
+    );
+    const tools = await this.deps.store.tools.listByConnection(connection.id);
+    return {
+      connectionId: connection.id,
+      alias: connection.alias,
+      status: connection.status,
+      mcpUrl: server?.canonicalUrl ?? "",
+      displayName: server?.displayName ?? connection.alias,
+      serverName: server?.displayName ?? null,
+      toolCount: tools.length,
+      lastError: connection.lastErrorMessageRedacted,
+    };
+  }
+
+  private async reload(connection: UpstreamConnection): Promise<UpstreamConnection> {
+    return this.requireConnection(connection.tenantId, connection.id);
+  }
+
+  private async requireConnection(
+    tenantId: string,
+    connectionId: string,
+  ): Promise<UpstreamConnection> {
+    const connection = await this.deps.store.connections.get(tenantId, connectionId);
+    if (!connection) {
+      this.deps.metrics.counter(Metric.TenantAccessDenied, { stage: "control_plane" });
+      throw new GatewayError("NOT_FOUND", "Connection not found");
+    }
+    return connection;
+  }
+
+  /**
+   * Answers "not found" rather than "forbidden" for a connection that exists
+   * but belongs to someone else, so the control plane does not confirm which
+   * connection ids a colleague holds.
+   */
+  private async requireVisible(
+    actor: ControlPlaneActor,
+    connectionId: string,
+  ): Promise<UpstreamConnection> {
+    const connection = await this.deps.store.connections.findVisible(
+      actor.tenantId,
+      actor.userId,
+      connectionId,
+    );
+    if (!connection) {
+      this.deps.metrics.counter(Metric.TenantAccessDenied, { stage: "control_plane" });
+      throw new GatewayError("NOT_FOUND", "Connection not found");
+    }
+    return connection;
+  }
+
+  private async requireServer(connection: UpstreamConnection): Promise<McpServerRecord> {
+    const server = await this.deps.store.mcpServers.get(
+      connection.tenantId,
+      connection.mcpServerId,
+    );
+    if (!server) throw new GatewayError("NOT_FOUND", "MCP server record is missing");
+    return server;
+  }
+}

@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      # node:sqlite, which the storage layer uses, needs 22.5 or newer.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Boundaries first: it needs no build, and a violation here is usually
+      # the reason a later step is about to fail confusingly.
+      - run: pnpm architecture
+
+      - run: pnpm typecheck
+
+      # The conformance suite binds loopback ports for its mock authorization
+      # and MCP servers; it needs no network access and no credentials.
+      - run: pnpm test
