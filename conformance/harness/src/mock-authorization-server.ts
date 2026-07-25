@@ -46,6 +46,13 @@ export interface MockAuthorizationServerOptions {
   fixedScopes?: string[] | null;
   requireResourceParameter?: boolean;
   supportsRevocation?: boolean;
+  /** Status the revocation endpoint answers with; RFC 7009 says 200 on success. */
+  revocationStatus?: number;
+  /**
+   * Remember every `jti` a client assertion carries and refuse a repeat, as a
+   * server hardened against assertion replay does.
+   */
+  rejectReplayedAssertions?: boolean;
   /** Advertise DPoP and bind issued tokens to the proof key. */
   supportsDpop?: boolean;
   /** Refuse the first proof at each endpoint to hand out a nonce, as RFC 9449 allows. */
@@ -132,6 +139,8 @@ export class MockAuthorizationServer {
   private readonly issuedNonces = new Map<string, string>();
   /** Proof identifiers already spent, so a replayed proof is caught. */
   private readonly seenProofIds = new Set<string>();
+  /** Client assertion identifiers already spent, for the same reason. */
+  private readonly seenAssertionIds = new Set<string>();
   private readonly refreshIndex = new Map<string, string>();
   private failures: TokenFailureInjection | null = null;
   private tokenDelayMs = 0;
@@ -616,6 +625,11 @@ export class MockAuthorizationServer {
 
   private handleRevoke(request: FixtureRequest, res: ServerResponse): void {
     this.stats.revocations += 1;
+    const status = this.options.revocationStatus ?? 200;
+    if (status < 200 || status >= 300) {
+      json(res, status, { error: "invalid_request" });
+      return;
+    }
     const body = new URLSearchParams(request.body);
     const token = body.get("token") ?? "";
     const grantId = this.refreshIndex.get(token);
@@ -727,6 +741,12 @@ export class MockAuthorizationServer {
     if (payload["aud"] !== `${this.issuer}/token`) return false;
     if (typeof payload["exp"] !== "number" || payload["exp"] * 1000 <= Date.now()) {
       return false;
+    }
+    if (this.options.rejectReplayedAssertions) {
+      const jti = payload["jti"];
+      if (typeof jti !== "string") return false;
+      if (this.seenAssertionIds.has(jti)) return false;
+      this.seenAssertionIds.add(jti);
     }
 
     let keys: { kid?: string; [key: string]: unknown }[];

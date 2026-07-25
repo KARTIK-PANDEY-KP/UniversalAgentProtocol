@@ -301,6 +301,48 @@ describe("OAuth client registration", () => {
 
     expect(connection.status).toBe("CONNECTED");
   });
+
+  it("signs a fresh assertion for each attempt at the token endpoint", async () => {
+    // The DPoP nonce round trip sends the token request twice. A server that
+    // remembers assertion identifiers rejects the second if the client reuses
+    // the first one's jti, which would make the prescribed retry fail.
+    const { gateway, upstream } = await scenario({
+      supportsDcr: true,
+      tokenEndpointAuthMethods: ["private_key_jwt"],
+      supportsDpop: true,
+      requireDpopNonce: true,
+      rejectReplayedAssertions: true,
+    });
+
+    const { connection } = await connectUpstream(gateway, upstream.url);
+    expect(connection.status).toBe("CONNECTED");
+    expect(upstream.authorizationServer.stats.tokenRequests).toBeGreaterThan(1);
+  });
+
+  it("reports a failed revocation instead of reporting success", async () => {
+    const { gateway, upstream } = await scenario({
+      supportsDcr: true,
+      supportsRevocation: true,
+      revocationStatus: 503,
+    });
+    const { connection } = await connectUpstream(gateway, upstream.url);
+    expect(connection.status).toBe("CONNECTED");
+
+    // Disconnecting still clears local state -- the point is that the failure
+    // reaches the log rather than being read as a successful revocation.
+    const response = await fetch(
+      `${gateway.baseUrl}/api/v1/connections/${connection.connection_id}`,
+      { method: "DELETE", headers: { authorization: `Bearer ${gateway.apiKey}` } },
+    );
+    expect(response.status).toBe(204);
+    expect(upstream.authorizationServer.stats.revocations).toBe(1);
+
+    const record = await gateway.services.store.connections.get(
+      gateway.tenantId,
+      connection.connection_id,
+    );
+    expect(record ?? null).toBeNull();
+  });
 });
 
 async function registrationOf(gateway: GatewayFixture): Promise<{

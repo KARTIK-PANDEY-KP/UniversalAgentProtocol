@@ -83,6 +83,36 @@ function isDpopNonceError(payload: unknown): boolean {
   return isRecord(payload) && payload["error"] === "use_dpop_nonce";
 }
 
+/**
+ * RFC 6749 section 2.3.1 requires the client id and secret to be encoded with
+ * `application/x-www-form-urlencoded` before base64, which differs from
+ * `encodeURIComponent` on space and on `!'()*`. Identical for the alphanumeric
+ * credentials most servers issue, and the difference is the whole reason the
+ * ones that issue punctuation are hard to debug.
+ */
+function formUrlEncode(value: string): string {
+  return new URLSearchParams({ v: value }).toString().slice(2);
+}
+
+/**
+ * RFC 8414: a server that advertises the methods it accepts has told us what
+ * will work. Failing here names both sides, rather than leaving an operator
+ * with a 401 that says nothing about which of the two is wrong.
+ */
+function assertMethodSupported(
+  metadata: AuthorizationServerMetadata,
+  method: TokenEndpointAuthMethod,
+): void {
+  const supported = metadata.token_endpoint_auth_methods_supported;
+  if (!Array.isArray(supported) || supported.length === 0) return;
+  if (supported.includes(method)) return;
+  throw new GatewayError(
+    "TOKEN_EXCHANGE_FAILED",
+    `Authorization server does not accept ${method} at its token endpoint`,
+    { data: { supported: supported.filter((entry) => typeof entry === "string") } },
+  );
+}
+
 export class OAuthTokenClient {
   /** Latest DPoP nonce each token endpoint asked for, keyed by endpoint. */
   private readonly tokenNonces = new Map<string, string>();
@@ -146,11 +176,12 @@ export class OAuthTokenClient {
     const body = new URLSearchParams({ token: params.token });
     if (params.tokenTypeHint) body.set("token_type_hint", params.tokenTypeHint);
     const headers = this.applyClientAuthentication(
+      params.metadata,
       params.credentials,
       body,
       endpoint,
     );
-    await this.fetcher.request({
+    const response = await this.fetcher.request({
       url: endpoint,
       method: "POST",
       headers: {
@@ -161,6 +192,17 @@ export class OAuthTokenClient {
       body: body.toString(),
       followRedirects: false,
     });
+
+    // RFC 7009 answers 200 for a token it revoked and for one it never issued.
+    // Anything else means the token is still live, and a caller told otherwise
+    // will report a credential as destroyed while it still works.
+    if (response.status < 200 || response.status >= 300) {
+      throw OAuthProtocolError.fromBody(
+        response.status,
+        parseJson(await response.text()),
+        "invalid_request",
+      );
+    }
   }
 
   private async postToken(
@@ -173,13 +215,22 @@ export class OAuthTokenClient {
     if (!endpoint) {
       throw new GatewayError("DISCOVERY_FAILED", "Authorization server has no token endpoint");
     }
-    const headers = this.applyClientAuthentication(credentials, body, endpoint);
-
     // A server may refuse the first proof and hand back a nonce it wants
     // echoed. That is one prescribed round trip, not an error, so it is
     // retried once rather than surfaced.
     let nonce = dpopKey ? this.tokenNonces.get(endpoint) : undefined;
     for (let attempt = 0; ; attempt += 1) {
+      // Rebuilt every attempt. A client assertion carries a jti and an iat, and
+      // a server that tracks either rejects the second send of the first one --
+      // which would turn the prescribed nonce round trip into a failure.
+      const attemptBody = new URLSearchParams(body);
+      const headers = this.applyClientAuthentication(
+        metadata,
+        credentials,
+        attemptBody,
+        endpoint,
+      );
+
       const response = await this.fetcher.request({
         url: endpoint,
         method: "POST",
@@ -191,7 +242,7 @@ export class OAuthTokenClient {
             ? { dpop: this.proof(dpopKey, "POST", endpoint, nonce, undefined) }
             : {}),
         },
-        body: body.toString(),
+        body: attemptBody.toString(),
         followRedirects: false,
       });
 
@@ -255,10 +306,13 @@ export class OAuthTokenClient {
   }
 
   private applyClientAuthentication(
+    metadata: AuthorizationServerMetadata,
     credentials: ClientCredentials,
     body: URLSearchParams,
     endpoint: string,
   ): Record<string, string> {
+    assertMethodSupported(metadata, credentials.tokenEndpointAuthMethod);
+
     switch (credentials.tokenEndpointAuthMethod) {
       case "none":
         body.set("client_id", credentials.clientId);
@@ -268,7 +322,7 @@ export class OAuthTokenClient {
         body.set("client_secret", credentials.clientSecret ?? "");
         return {};
       case "client_secret_basic": {
-        const raw = `${encodeURIComponent(credentials.clientId)}:${encodeURIComponent(
+        const raw = `${formUrlEncode(credentials.clientId)}:${formUrlEncode(
           credentials.clientSecret ?? "",
         )}`;
         return { authorization: `Basic ${Buffer.from(raw).toString("base64")}` };
