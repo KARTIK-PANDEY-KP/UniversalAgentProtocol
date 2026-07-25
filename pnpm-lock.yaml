@@ -35,6 +35,18 @@ importers:
         specifier: workspace:*
         version: link:../observability
 
+  packages/storage:
+    dependencies:
+      '@umg/core':
+        specifier: workspace:*
+        version: link:../core
+      '@umg/observability':
+        specifier: workspace:*
+        version: link:../observability
+      '@umg/security':
+        specifier: workspace:*
+        version: link:../security
+
 packages:
 
   '@esbuild/aix-ppc64@0.28.1':
