@@ -99,6 +99,7 @@ answering the same questions for itself.
 | `apps/migration-cli` | `umg-migrate`: discover, import, install, prune, rollback |
 | `conformance/harness` | Mock authorization server, mock MCP server, gateway fixture |
 | `conformance/tests` | The test matrix from section 19 of the brief |
+| `interop` | Manual rig: the gateway against real SDKs, a real OAuth provider and live servers |
 | `tooling/architecture` | The check that enforces the module boundaries |
 
 ## Documentation
@@ -129,3 +130,14 @@ The conformance suite runs the real gateway against mock authorization and MCP
 servers over loopback HTTP: no network access and no mocking of the gateway's
 own code. Every test in `conformance/tests` maps to a numbered requirement in
 the engineering brief.
+
+Mocks only prove the gateway matches our reading of the specifications, so
+[interop/](interop/README.md) checks that reading against implementations
+nobody here wrote: the official MCP SDK on both sides, a certified OpenID
+Connect provider, and MCP servers on the public internet. It needs network
+access and a couple of minutes, so it is run by hand rather than in CI.
+
+```bash
+pnpm build && cd interop && npm install
+node rig.mjs up && node run-all.mjs
+```
