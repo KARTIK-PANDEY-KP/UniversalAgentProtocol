@@ -24,6 +24,7 @@ All configuration is environment variables.
 | `GATEWAY_MAX_RESULT_BYTES` | `4194304` | Largest upstream tool result accepted |
 | `GATEWAY_ALLOW_SAMPLING` | `true` | Permit upstreams to ask the client for a model completion |
 | `GATEWAY_ALLOW_ELICITATION` | `true` | Permit upstreams to ask the client for input |
+| `GATEWAY_ALLOW_ROOTS` | `true` | Permit upstreams to read the client's roots, which name local directories |
 | `GATEWAY_PAGE_SIZE` | `100` | Entries per page of `tools/list`, `resources/list` and `prompts/list` |
 | `GATEWAY_TOOL_CALLS_PER_MINUTE` | `600` | Tool calls a tenant may make per minute; `0` disables the limit |
 | `GATEWAY_API_REQUESTS_PER_MINUTE` | `300` | Control-plane and MCP requests a tenant may make per minute; `0` disables the limit |

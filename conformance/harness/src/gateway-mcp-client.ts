@@ -25,6 +25,8 @@ export interface GatewayMcpClientOptions {
   onElicitation?(params: JsonObject): JsonObject;
   /** Answers `sampling/createMessage` requests the gateway forwards. */
   onSampling?(params: JsonObject): JsonObject;
+  /** Answers `roots/list` requests the gateway forwards. */
+  onRoots?(): JsonObject;
 }
 
 export class GatewayMcpClientError extends Error {
@@ -300,6 +302,8 @@ export class GatewayMcpClient {
       result = this.options.onElicitation?.(params) ?? null;
     } else if (request.method === McpMethod.SamplingCreateMessage) {
       result = this.options.onSampling?.(params) ?? null;
+    } else if (request.method === McpMethod.RootsList) {
+      result = this.options.onRoots?.() ?? null;
     }
     const body: JsonRpcResponse =
       result === null

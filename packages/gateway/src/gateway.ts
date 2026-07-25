@@ -193,6 +193,7 @@ export class Gateway {
       maxResultBytes: config.maxResultBytes,
       allowSampling: config.allowSampling,
       allowElicitation: config.allowElicitation,
+      allowRoots: config.allowRoots,
       ...(options.policy ?? {}),
     });
     const resourceServer = new ResourceServerAuthenticator({
@@ -223,7 +224,9 @@ export class Gateway {
       metrics,
       clock,
       clientInfo: GATEWAY_SERVER_INFO,
-      clientCapabilities: { sampling: {}, elicitation: {}, roots: { listChanged: true } },
+      // Only what policy will actually let an upstream use. Claiming more
+      // invites a request that is refused in the middle of a tool call.
+      clientCapabilities: policy.clientCapabilities(),
       requestTimeoutMs: config.requestTimeoutMs,
       onNotification: (context, notification) => {
         handlerRef?.routeUpstreamNotification(context, notification);

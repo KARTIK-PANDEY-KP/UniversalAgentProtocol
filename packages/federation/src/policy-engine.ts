@@ -19,6 +19,12 @@ export interface ToolPolicy {
   maxResultBytes: number;
   allowSampling: boolean;
   allowElicitation: boolean;
+  /**
+   * Whether an upstream may read the client's roots. The answer names
+   * directories on the user's machine, which is worth being able to withhold
+   * from a server that has no business knowing them.
+   */
+  allowRoots: boolean;
   /** Roles allowed to call write-class tools; empty means every member. */
   writeRoles: string[];
 }
@@ -31,6 +37,7 @@ export const DEFAULT_TOOL_POLICY: ToolPolicy = {
   maxResultBytes: 4 * 1024 * 1024,
   allowSampling: true,
   allowElicitation: true,
+  allowRoots: true,
   writeRoles: [],
 };
 
@@ -124,9 +131,32 @@ export class PolicyEngine {
     }
   }
 
+  /**
+   * The three things an MCP server may ask a client for. Anything else an
+   * upstream invents is refused: the gateway would be relaying a request its
+   * client never agreed to answer.
+   */
   allowsServerRequest(method: string): boolean {
     if (method.startsWith("sampling/")) return this.policy.allowSampling;
     if (method.startsWith("elicitation/")) return this.policy.allowElicitation;
+    if (method.startsWith("roots/")) return this.policy.allowRoots;
     return false;
+  }
+
+  /**
+   * What the gateway tells upstreams it can do on the client's behalf.
+   * Advertising a capability the policy then refuses invites a server to
+   * build a request that fails halfway through a tool call.
+   */
+  clientCapabilities(): {
+    sampling?: JsonObject;
+    elicitation?: JsonObject;
+    roots?: { listChanged: boolean };
+  } {
+    return {
+      ...(this.policy.allowSampling ? { sampling: {} } : {}),
+      ...(this.policy.allowElicitation ? { elicitation: {} } : {}),
+      ...(this.policy.allowRoots ? { roots: { listChanged: true } } : {}),
+    };
   }
 }

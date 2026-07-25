@@ -290,6 +290,67 @@ describe("interactive MCP behaviour", () => {
     await client.close();
   });
 
+  it("answers an upstream that asks the client for its roots", async () => {
+    const upstream = await rootsReadingUpstream();
+    started.push(upstream);
+    const gateway = await newGateway();
+    await connectUpstream(gateway, upstream.url, { alias: "up" });
+
+    const client = new GatewayMcpClient({
+      baseUrl: gateway.baseUrl,
+      apiKey: gateway.apiKey,
+      capabilities: { roots: { listChanged: true } },
+      onRoots: () => ({ roots: [{ uri: "file:///work/project", name: "project" }] }),
+    });
+    await client.initialize();
+    await client.openStream();
+
+    const result = await client.callTool("up.where", {}, { stream: true });
+    expect(String((result["content"] as { text: string }[])[0]?.text)).toContain(
+      "file:///work/project",
+    );
+    await client.close();
+  });
+
+  it("withholds the client's roots when the operator turned them off", async () => {
+    const upstream = await rootsReadingUpstream();
+    started.push(upstream);
+    // Roots name directories on the user's machine, so an operator may decide
+    // no upstream needs them.
+    const gateway = new GatewayFixture({ config: { allowRoots: false } });
+    await gateway.start();
+    started.push(gateway);
+    await connectUpstream(gateway, upstream.url, { alias: "up" });
+
+    let asked = false;
+    const client = new GatewayMcpClient({
+      baseUrl: gateway.baseUrl,
+      apiKey: gateway.apiKey,
+      capabilities: { roots: { listChanged: true } },
+      onRoots: () => {
+        asked = true;
+        return { roots: [{ uri: "file:///work/project", name: "project" }] };
+      },
+    });
+    await client.initialize();
+    await client.openStream();
+
+    const result = await client.callTool("up.where", {}, { stream: true });
+    expect(String((result["content"] as { text: string }[])[0]?.text)).toContain(
+      "does not allow",
+    );
+    expect(asked).toBe(false);
+
+    // Nor is the upstream told the roots moved, which would only provoke a
+    // read it is not going to be allowed.
+    await client.notify(McpMethod.RootsListChanged, {});
+    await delay(150);
+    expect(
+      upstream.mcpServer.stats.notifications.includes(McpMethod.RootsListChanged),
+    ).toBe(false);
+    await client.close();
+  });
+
   it("asks for reconnection when the gateway's own client secret expires", async () => {
     const upstream = await startProtectedUpstream({
       authorizationServer: {
@@ -346,6 +407,30 @@ async function waitFor(predicate: () => boolean, timeoutMs = 5_000): Promise<voi
     await delay(10);
   }
   throw new Error("Timed out waiting for a condition");
+}
+
+/** An upstream whose only tool reports back whatever roots it was given. */
+async function rootsReadingUpstream(): Promise<
+  Awaited<ReturnType<typeof startProtectedUpstream>>
+> {
+  return startProtectedUpstream({
+    authorizationServer: { supportsDcr: true },
+    mcpServer: {
+      tools: [
+        {
+          name: "where",
+          handler: async (_args, hooks) => {
+            const answer = await hooks.request(McpMethod.RootsList, {});
+            const text =
+              "result" in answer
+                ? JSON.stringify(answer.result)
+                : JSON.stringify(answer.error);
+            return { content: [{ type: "text", text }] };
+          },
+        },
+      ],
+    },
+  });
 }
 
 async function waitForNotification(
