@@ -1,0 +1,97 @@
+import { GatewayError } from "@umg/core";
+
+export interface UrlPolicy {
+  /** Plain HTTP is only acceptable for local development and test fixtures. */
+  allowHttp: boolean;
+}
+
+const DEFAULT_PORTS: Record<string, string> = { "http:": "80", "https:": "443" };
+
+export function parseAbsoluteUrl(input: string): URL {
+  let url: URL;
+  try {
+    url = new URL(input);
+  } catch {
+    throw new GatewayError("INVALID_REQUEST", `Not an absolute URL: ${input}`);
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new GatewayError(
+      "INVALID_REQUEST",
+      `Unsupported URL scheme: ${url.protocol}`,
+    );
+  }
+  return url;
+}
+
+/**
+ * Produces the canonical form used both as a storage key and as the RFC 8707
+ * `resource` value: lower-cased scheme and host, no default port, no fragment,
+ * no trailing slash, path preserved because it distinguishes MCP endpoints
+ * hosted on the same origin.
+ */
+export function canonicalizeUrl(input: string | URL, policy: UrlPolicy): string {
+  const url = typeof input === "string" ? parseAbsoluteUrl(input) : new URL(input.href);
+  if (url.protocol === "http:" && !policy.allowHttp) {
+    throw new GatewayError(
+      "INVALID_REQUEST",
+      "Remote MCP servers must be reachable over HTTPS",
+    );
+  }
+  url.hash = "";
+  url.username = "";
+  url.password = "";
+  url.protocol = url.protocol.toLowerCase();
+  url.hostname = url.hostname.toLowerCase();
+  if (url.port === DEFAULT_PORTS[url.protocol]) url.port = "";
+  let path = url.pathname;
+  while (path.length > 1 && path.endsWith("/")) path = path.slice(0, -1);
+  url.pathname = path === "/" ? "" : path;
+  return url.toString().replace(/\/$/u, "");
+}
+
+/** Two URLs identify the same protected resource. */
+export function sameResource(
+  left: string,
+  right: string,
+  policy: UrlPolicy,
+): boolean {
+  try {
+    return canonicalizeUrl(left, policy) === canonicalizeUrl(right, policy);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Issuer comparison per RFC 8414: exact string match after removing a single
+ * trailing slash, and never across different origins.
+ */
+export function sameIssuer(left: string, right: string): boolean {
+  const strip = (value: string): string => value.replace(/\/+$/u, "");
+  return strip(left) === strip(right);
+}
+
+export function issuerToWellKnown(issuer: string, suffix: string): string[] {
+  const url = parseAbsoluteUrl(issuer);
+  const path = url.pathname.replace(/\/+$/u, "");
+  const origin = `${url.protocol}//${url.host}`;
+  if (path === "" || path === "/") {
+    return [`${origin}/.well-known/${suffix}`];
+  }
+  // RFC 8414 inserts the well-known segment before the issuer path; OpenID
+  // Connect Discovery appends it. Capable clients try both.
+  return [
+    `${origin}/.well-known/${suffix}${path}`,
+    `${origin}${path}/.well-known/${suffix}`,
+  ];
+}
+
+/** RFC 9728 well-known locations derived from the resource URL. */
+export function resourceMetadataCandidates(resourceUrl: string): string[] {
+  const url = parseAbsoluteUrl(resourceUrl);
+  const path = url.pathname.replace(/\/+$/u, "");
+  const origin = `${url.protocol}//${url.host}`;
+  const candidates = [`${origin}/.well-known/oauth-protected-resource${path}`];
+  if (path !== "") candidates.push(`${origin}/.well-known/oauth-protected-resource`);
+  return candidates;
+}

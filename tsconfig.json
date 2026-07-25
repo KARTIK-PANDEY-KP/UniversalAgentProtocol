@@ -1,0 +1,18 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/core" },
+    { "path": "packages/observability" },
+    { "path": "packages/security" },
+    { "path": "packages/storage" },
+    { "path": "packages/oauth" },
+    { "path": "packages/mcp-client" },
+    { "path": "packages/mcp-server" },
+    { "path": "packages/federation" },
+    { "path": "packages/gateway" },
+    { "path": "apps/gateway-api" },
+    { "path": "apps/migration-cli" },
+    { "path": "apps/background-worker" },
+    { "path": "conformance/harness" }
+  ]
+}
