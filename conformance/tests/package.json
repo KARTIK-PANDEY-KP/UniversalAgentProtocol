@@ -1,0 +1,11 @@
+{
+  "name": "@umg/conformance-tests",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@umg/conformance": "workspace:*",
+    "@umg/core": "workspace:*",
+    "@umg/gateway": "workspace:*"
+  }
+}

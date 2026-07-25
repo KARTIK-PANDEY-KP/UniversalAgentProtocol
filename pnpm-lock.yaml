@@ -27,6 +27,39 @@ importers:
         specifier: workspace:*
         version: link:../../packages/observability
 
+  conformance/harness:
+    dependencies:
+      '@umg/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@umg/gateway':
+        specifier: workspace:*
+        version: link:../../packages/gateway
+      '@umg/mcp-server':
+        specifier: workspace:*
+        version: link:../../packages/mcp-server
+      '@umg/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
+      '@umg/security':
+        specifier: workspace:*
+        version: link:../../packages/security
+      '@umg/storage':
+        specifier: workspace:*
+        version: link:../../packages/storage
+
+  conformance/tests:
+    dependencies:
+      '@umg/conformance':
+        specifier: workspace:*
+        version: link:../harness
+      '@umg/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@umg/gateway':
+        specifier: workspace:*
+        version: link:../../packages/gateway
+
   packages/core: {}
 
   packages/federation:

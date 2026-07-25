@@ -10,6 +10,8 @@
     { "path": "packages/mcp-server" },
     { "path": "packages/federation" },
     { "path": "packages/gateway" },
-    { "path": "apps/gateway-api" }
+    { "path": "apps/gateway-api" },
+    { "path": "conformance/harness" },
+    { "path": "conformance/tests" }
   ]
 }
