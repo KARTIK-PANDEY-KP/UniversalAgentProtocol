@@ -788,5 +788,32 @@ describe("gateway security", () => {
       expect(await neighbour.callTool("up.ping")).toBeDefined();
       await neighbour.close();
     });
+
+    it("meters listing too, not only calling", async () => {
+      // Three requests: creating the connection below spends one, leaving two
+      // for the client. The control plane and the MCP endpoint share a budget.
+      const gateway = await newGateway({ config: { apiRequestsPerMinute: 3 } });
+      const server = new MockMcpServer({ tools: [{ name: "ping" }] });
+      await server.start();
+      started.push(server);
+      await gateway.createConnection(server.url, { alias: "up" });
+
+      const client = new GatewayMcpClient({
+        baseUrl: gateway.baseUrl,
+        apiKey: gateway.apiKey,
+      });
+      await client.initialize();
+
+      // Discovery reads the whole tenant catalogue, so an unmetered
+      // tools/list loop is a cheap way to make the gateway expensive.
+      await client.listTools();
+      await client.listTools();
+      await expect(client.listTools()).rejects.toThrow(/too many MCP requests/iu);
+
+      // Liveness is never throttled; a client must be able to tell the
+      // difference between "slow down" and "gone".
+      expect(await client.request("ping", {})).toEqual({});
+      await client.close();
+    });
   });
 });

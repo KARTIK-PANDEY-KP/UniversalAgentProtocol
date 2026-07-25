@@ -1,4 +1,4 @@
-import { GatewayError, parseScopes } from "@umg/core";
+import { GatewayError, isToolRiskLevel, parseScopes, type ToolRiskLevel } from "@umg/core";
 import type { LogLevel } from "@umg/observability";
 
 export interface ApiKeyPrincipal {
@@ -37,6 +37,16 @@ export interface GatewayConfig {
   gatewayScopesSupported: string[];
   /** Roles allowed to call anything other than a read-only tool; empty allows all. */
   writeRoles: string[];
+  /** Risk classes never exposed, whatever an upstream advertises. */
+  blockedRiskLevels: ToolRiskLevel[];
+  /** Risk classes that need a per-call human confirmation. */
+  confirmationRiskLevels: ToolRiskLevel[];
+  /** Expose tools that look destructive but carry no annotation saying so. */
+  exposeUnreviewedDestructive: boolean;
+  maxArgumentBytes: number;
+  maxResultBytes: number;
+  allowSampling: boolean;
+  allowElicitation: boolean;
   /** Tool calls a tenant may make per minute; 0 disables the limit. */
   toolCallsPerMinute: number;
   /** Control-plane requests a tenant may make per minute; 0 disables the limit. */
@@ -61,6 +71,9 @@ const DEFAULTS = {
   apiRequestsPerMinute: 300,
   requestTimeoutMs: 60_000,
   authorizationTransactionTtlMs: 600_000,
+  confirmationRiskLevels: "DESTRUCTIVE,FINANCIAL",
+  maxArgumentBytes: 256 * 1024,
+  maxResultBytes: 4 * 1024 * 1024,
 };
 
 function parseList(value: string | undefined): string[] {
@@ -74,6 +87,16 @@ function parseList(value: string | undefined): string[] {
 function parseBool(value: string | undefined, fallback: boolean): boolean {
   if (value === undefined) return fallback;
   return ["1", "true", "yes", "on"].includes(value.toLowerCase());
+}
+
+function parseRiskLevels(name: string, value: string | undefined): ToolRiskLevel[] {
+  return parseList(value).map((entry) => {
+    const normalized = entry.toUpperCase();
+    if (!isToolRiskLevel(normalized)) {
+      throw new GatewayError("INVALID_REQUEST", `${name} lists an unknown risk level: ${entry}`);
+    }
+    return normalized;
+  });
 }
 
 /** `key:tenant:user[:label[:role]]` entries separated by commas. */
@@ -116,6 +139,24 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): GatewayConfig 
     gatewayAuthorizationServers: parseList(env["GATEWAY_AUTHORIZATION_SERVERS"]),
     gatewayScopesSupported: parseScopes(env["GATEWAY_SCOPES_SUPPORTED"] ?? "mcp"),
     writeRoles: parseList(env["GATEWAY_WRITE_ROLES"]),
+    blockedRiskLevels: parseRiskLevels(
+      "GATEWAY_BLOCKED_RISK_LEVELS",
+      env["GATEWAY_BLOCKED_RISK_LEVELS"],
+    ),
+    confirmationRiskLevels: parseRiskLevels(
+      "GATEWAY_CONFIRMATION_RISK_LEVELS",
+      env["GATEWAY_CONFIRMATION_RISK_LEVELS"] ?? DEFAULTS.confirmationRiskLevels,
+    ),
+    exposeUnreviewedDestructive: parseBool(
+      env["GATEWAY_EXPOSE_UNREVIEWED_DESTRUCTIVE"],
+      false,
+    ),
+    maxArgumentBytes: Number(
+      env["GATEWAY_MAX_ARGUMENT_BYTES"] ?? DEFAULTS.maxArgumentBytes,
+    ),
+    maxResultBytes: Number(env["GATEWAY_MAX_RESULT_BYTES"] ?? DEFAULTS.maxResultBytes),
+    allowSampling: parseBool(env["GATEWAY_ALLOW_SAMPLING"], true),
+    allowElicitation: parseBool(env["GATEWAY_ALLOW_ELICITATION"], true),
     toolCallsPerMinute: Number(
       env["GATEWAY_TOOL_CALLS_PER_MINUTE"] ?? DEFAULTS.toolCallsPerMinute,
     ),

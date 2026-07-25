@@ -174,6 +174,13 @@ export class Gateway {
     const policy = new PolicyEngine({
       ...DEFAULT_TOOL_POLICY,
       writeRoles: config.writeRoles,
+      blockedRiskLevels: config.blockedRiskLevels,
+      confirmationRiskLevels: config.confirmationRiskLevels,
+      disableUnknownDestructive: !config.exposeUnreviewedDestructive,
+      maxArgumentBytes: config.maxArgumentBytes,
+      maxResultBytes: config.maxResultBytes,
+      allowSampling: config.allowSampling,
+      allowElicitation: config.allowElicitation,
       ...(options.policy ?? {}),
     });
     const perMinute = (limit: number): RateLimiter =>
@@ -234,6 +241,7 @@ export class Gateway {
       sessions: upstreamSessions,
       tokenManager,
       toolCallLimiter,
+      apiLimiter,
       policy,
       audit,
       clock,

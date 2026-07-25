@@ -32,8 +32,15 @@ All configuration is environment variables.
 | `GATEWAY_ENCRYPTION_KEYS` | generated | `kid:base64key[,kid:base64key]`, first entry active |
 | `GATEWAY_API_KEYS` | none | `key:tenantId:userId[:label[:role]]` entries, comma separated; the role defaults to `member` |
 | `GATEWAY_WRITE_ROLES` | none | Roles allowed to call anything other than a read-only tool; unset allows every role |
+| `GATEWAY_BLOCKED_RISK_LEVELS` | none | Risk classes never exposed, whatever an upstream advertises |
+| `GATEWAY_CONFIRMATION_RISK_LEVELS` | `DESTRUCTIVE,FINANCIAL` | Risk classes that need a per-call confirmation |
+| `GATEWAY_EXPOSE_UNREVIEWED_DESTRUCTIVE` | `false` | Expose tools that look destructive but carry no annotation saying so |
+| `GATEWAY_MAX_ARGUMENT_BYTES` | `262144` | Largest tool argument payload accepted |
+| `GATEWAY_MAX_RESULT_BYTES` | `4194304` | Largest upstream tool result accepted |
+| `GATEWAY_ALLOW_SAMPLING` | `true` | Permit upstreams to ask the client for a model completion |
+| `GATEWAY_ALLOW_ELICITATION` | `true` | Permit upstreams to ask the client for input |
 | `GATEWAY_TOOL_CALLS_PER_MINUTE` | `600` | Tool calls a tenant may make per minute; `0` disables the limit |
-| `GATEWAY_API_REQUESTS_PER_MINUTE` | `300` | Control-plane requests a tenant may make per minute; `0` disables the limit |
+| `GATEWAY_API_REQUESTS_PER_MINUTE` | `300` | Control-plane and MCP requests a tenant may make per minute; `0` disables the limit |
 | `GATEWAY_ALLOWED_ORIGINS` | none | Origins permitted on the MCP endpoint |
 | `GATEWAY_RETURN_TO_ORIGINS` | none | Extra origins a post-authorization `return_to` may point at; the gateway's own origin is always allowed |
 | `GATEWAY_AUTHORIZATION_SERVERS` | none | Issuers that mint tokens for the gateway itself |
@@ -185,15 +192,20 @@ and enabled flag, and `POST /api/v1/tools/:id` toggles one.
 
 ### A tenant is being rate limited
 
-Tool calls and control-plane requests are metered per tenant with a token
-bucket that refills continuously, so a burst is absorbed but a sustained flood
-is not. A throttled caller gets HTTP 429 with `Retry-After`, or the JSON-RPC
-equivalent on the MCP endpoint, and the message says how long to wait.
+Requests are metered per tenant with a token bucket that refills continuously,
+so a burst is absorbed but a sustained flood is not. A throttled caller gets
+HTTP 429 with `Retry-After`, or the JSON-RPC equivalent on the MCP endpoint,
+and the message says how long to wait.
 
-Both limits are per gateway process. Raise `GATEWAY_TOOL_CALLS_PER_MINUTE` or
-`GATEWAY_API_REQUESTS_PER_MINUTE` if the ceiling is genuinely too low, but a
-tenant hitting it usually means a client is retrying in a loop. Setting either
-to `0` disables that limit entirely.
+There are two budgets. `GATEWAY_API_REQUESTS_PER_MINUTE` covers the control
+plane and every MCP request except `ping`, which is never throttled so that a
+client can always tell "slow down" apart from "gone".
+`GATEWAY_TOOL_CALLS_PER_MINUTE` applies on top of that to `tools/call` alone,
+because a tool call is the one request that spends an upstream's own quota.
+
+Both limits are per gateway process. Raise them if the ceiling is genuinely
+too low, but a tenant hitting one usually means a client is retrying in a
+loop. Setting either to `0` disables that limit entirely.
 
 ### A user cannot call a tool they can see
 

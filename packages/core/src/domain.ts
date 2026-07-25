@@ -26,14 +26,21 @@ export type TransportType = "STREAMABLE_HTTP" | "HTTP_SSE" | "UNKNOWN";
  * derived from generic MCP tool annotations and heuristics, never from
  * knowledge of a specific provider.
  */
-export type ToolRiskLevel =
-  | "READ_ONLY"
-  | "WRITE"
-  | "DESTRUCTIVE"
-  | "EXTERNAL_COMMUNICATION"
-  | "FINANCIAL"
-  | "ADMINISTRATIVE"
-  | "UNKNOWN";
+export const TOOL_RISK_LEVELS = [
+  "READ_ONLY",
+  "WRITE",
+  "DESTRUCTIVE",
+  "EXTERNAL_COMMUNICATION",
+  "FINANCIAL",
+  "ADMINISTRATIVE",
+  "UNKNOWN",
+] as const;
+
+export type ToolRiskLevel = (typeof TOOL_RISK_LEVELS)[number];
+
+export function isToolRiskLevel(value: string): value is ToolRiskLevel {
+  return (TOOL_RISK_LEVELS as readonly string[]).includes(value);
+}
 
 export interface Tenant {
   id: string;

@@ -42,6 +42,8 @@ export interface GatewayHandlerDeps {
   tokenManager: OAuthTokenManager;
   /** Caps tool calls per tenant so one workspace cannot starve the others. */
   toolCallLimiter: RateLimiter;
+  /** Caps every other MCP request per tenant, on the same budget as the API. */
+  apiLimiter: RateLimiter;
   policy: PolicyEngine;
   audit: AuditService;
   clock: Clock;
@@ -120,6 +122,12 @@ export class GatewayMcpHandler implements McpServerHandler {
     context: RequestContext,
   ): Promise<JsonObject> {
     const params = request.params ?? {};
+    // Everything but a liveness check costs a database read at minimum and an
+    // upstream round trip at worst, so the whole endpoint is metered, not only
+    // the tool calls. `tools/call` is metered again, more tightly, below.
+    if (request.method !== McpMethod.Ping) {
+      this.deps.apiLimiter.require(session.tenantId, "MCP requests");
+    }
     switch (request.method) {
       case McpMethod.Ping:
         return {};

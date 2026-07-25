@@ -140,8 +140,12 @@ looks destructive but carries no `destructiveHint` annotation is not exposed at
 all, and destructive or financial tools require confirmation per call.
 
 Arguments are validated against the tool's declared JSON Schema and capped at
-256 KiB; results are capped at 4 MiB. Operators can disable individual tools,
-block whole risk classes, and restrict write-class tools by role.
+256 KiB; results are capped at 4 MiB. Operators can disable individual tools
+through the control plane, and set the rest from the environment: which risk
+classes are blocked outright, which need confirmation, whether unreviewed
+destructive tools are exposed, both size caps, whether upstreams may ask the
+client for sampling or elicitation, and which roles may call write-class
+tools. See the configuration table in [operations.md](operations.md).
 
 Classification tokenizes the tool name first, so `delete_repository` and
 `deleteRepository` are both recognised — a word-boundary match against the raw

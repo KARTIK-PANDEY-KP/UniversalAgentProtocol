@@ -305,6 +305,42 @@ describe("tool federation", () => {
     await client.close();
   });
 
+  it("blocks a whole risk class when the operator configured one", async () => {
+    const gateway = await newGateway({
+      config: { blockedRiskLevels: ["EXTERNAL_COMMUNICATION"] },
+    });
+    const server = await openMcpServer({
+      tools: [{ name: "read_file" }, { name: "send_email" }],
+    });
+    await gateway.createConnection(server.url, { alias: "up" });
+
+    const client = await connectedClient(gateway);
+    expect((await client.listTools()).map((tool) => tool.name)).toEqual(["up.read_file"]);
+    await expect(client.callTool("up.send_email")).rejects.toThrow(/disabled by policy/u);
+
+    const { body } = await gateway.api("GET", "/api/v1/tools");
+    const blocked = (body["tools"] as { name: string; risk_level: string }[]).find(
+      (tool) => tool.name === "up.send_email",
+    );
+    expect(blocked?.risk_level).toBe("EXTERNAL_COMMUNICATION");
+    await client.close();
+  });
+
+  it("exposes unreviewed destructive tools when the operator opts in", async () => {
+    const gateway = await newGateway({
+      config: { exposeUnreviewedDestructive: true, confirmationRiskLevels: [] },
+    });
+    const server = await openMcpServer({ tools: [{ name: "delete_repository" }] });
+    await gateway.createConnection(server.url, { alias: "up" });
+
+    const client = await connectedClient(gateway);
+    expect((await client.listTools()).map((tool) => tool.name)).toEqual([
+      "up.delete_repository",
+    ]);
+    expect(await client.callTool("up.delete_repository")).toBeDefined();
+    await client.close();
+  });
+
   it("asks for confirmation before running a destructive tool", async () => {
     const gateway = await newGateway();
     const server = await openMcpServer({
