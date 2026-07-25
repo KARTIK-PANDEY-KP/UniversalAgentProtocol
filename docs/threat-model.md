@@ -130,6 +130,21 @@ There is no shared decrypted token cache. A session ID from one principal is
 not usable by another, even inside the same tenant: presenting it returns 404
 rather than confirming that it exists.
 
+### Isolation between members of one workspace
+
+A connection is owned either by the user who created it or by the workspace,
+and the tenant is not the boundary — the owner is. A personal connection is
+invisible to a colleague in every route that reads or writes one: listing,
+reading, renaming, refreshing, re-authorizing, deleting, listing its tools and
+toggling one of them. Sharing is deliberate, through `owner_type: "WORKSPACE"`
+at creation.
+
+A colleague who somehow learns a connection ID gets 404, not 403, so the
+control plane never confirms which connections another member holds.
+
+*Verified by* `conformance/tests/security.test.ts`, which walks the whole
+control plane as a second member of the same workspace.
+
 ### Tool-level policy
 
 OAuth authorizes access to an MCP server; it says nothing about whether every

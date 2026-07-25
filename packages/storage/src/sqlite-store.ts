@@ -295,10 +295,12 @@ export class SqliteGatewayStore implements GatewayStore {
       listVisible: async (tenantId, userId) =>
         connectionTable
           .findMany({ tenant_id: tenantId }, "created_at")
-          .filter(
-            (connection) =>
-              connection.ownerType === "WORKSPACE" || connection.ownerId === userId,
-          ),
+          .filter((connection) => isVisibleTo(connection, userId)),
+      findVisible: async (tenantId, userId, id) => {
+        const connection = connectionTable.findOne({ id, tenant_id: tenantId });
+        if (!connection || !isVisibleTo(connection, userId)) return null;
+        return connection;
+      },
       listAll: async () => connectionTable.findMany({}, "created_at"),
       findByAlias: async (tenantId, alias) =>
         connectionTable.findOne({ tenant_id: tenantId, alias }),
@@ -366,8 +368,9 @@ export class SqliteGatewayStore implements GatewayStore {
         toolTable.findMany({ connection_id: connectionId }, "gateway_name"),
       findByGatewayName: async (tenantId, gatewayName) =>
         toolTable.findOne({ tenant_id: tenantId, gateway_name: gatewayName }),
-      setEnabled: async (tenantId, id, enabled) =>
-        toolTable.update({ id, tenant_id: tenantId }, { enabled }) > 0,
+      setEnabled: async (tenantId, id, enabled) => {
+        toolTable.update({ id, tenant_id: tenantId }, { enabled });
+      },
       deleteByConnection: async (connectionId) => {
         toolTable.delete({ connection_id: connectionId });
       },
@@ -456,6 +459,10 @@ export class SqliteGatewayStore implements GatewayStore {
   close(): void {
     this.db.close();
   }
+}
+
+function isVisibleTo(connection: UpstreamConnection, userId: string): boolean {
+  return connection.ownerType === "WORKSPACE" || connection.ownerId === userId;
 }
 
 function syncTools(

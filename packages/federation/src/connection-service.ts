@@ -68,6 +68,16 @@ export interface ConnectionServiceDeps {
   onCatalogueChanged?(tenantId: string, changed: CatalogueChange): void;
 }
 
+/**
+ * Who is asking. Every control-plane operation is checked against this, not
+ * only against the tenant: members of one workspace must not reach each
+ * other's personal connections.
+ */
+export interface ControlPlaneActor {
+  tenantId: string;
+  userId: string;
+}
+
 export interface CreateConnectionInput {
   tenantId: string;
   userId: string;
@@ -224,7 +234,7 @@ export class ConnectionService {
     connectionId: string;
     returnTo?: string | null;
   }): Promise<{ authorizationUrl: string }> {
-    const connection = await this.requireConnection(params.tenantId, params.connectionId);
+    const connection = await this.requireVisible(params, params.connectionId);
     const server = await this.requireServer(connection);
     const prepared = await this.prepareAuthorization({
       connection,
@@ -352,12 +362,23 @@ export class ConnectionService {
     return { authorizationUrl: transaction.authorizationUrl };
   }
 
-  /** Called after a successful OAuth callback to bring the catalogue online. */
+  /**
+   * Brings a catalogue online after a successful OAuth callback. The
+   * transaction the callback consumed is the authorization for this, so there
+   * is no acting user to check; the user-facing route is `refresh`.
+   */
   async activateConnection(
     tenantId: string,
     connectionId: string,
   ): Promise<ToolSyncResult> {
     const connection = await this.requireConnection(tenantId, connectionId);
+    await this.detectTransport(connection);
+    return this.syncCatalogue(connection);
+  }
+
+  /** Rediscovers a catalogue on request from someone who can see it. */
+  async refresh(actor: ControlPlaneActor, connectionId: string): Promise<ToolSyncResult> {
+    const connection = await this.requireVisible(actor, connectionId);
     await this.detectTransport(connection);
     return this.syncCatalogue(connection);
   }
@@ -543,13 +564,13 @@ export class ConnectionService {
   }
 
   async rename(
-    tenantId: string,
+    actor: ControlPlaneActor,
     connectionId: string,
     alias: string,
   ): Promise<ConnectionView> {
-    const connection = await this.requireConnection(tenantId, connectionId);
+    const connection = await this.requireVisible(actor, connectionId);
     const normalized = sanitizeAlias(alias);
-    const taken = (await this.deps.store.connections.listByTenant(tenantId))
+    const taken = (await this.deps.store.connections.listByTenant(actor.tenantId))
       .filter((candidate) => candidate.id !== connectionId)
       .map((candidate) => candidate.alias);
     if (taken.includes(normalized)) {
@@ -571,24 +592,37 @@ export class ConnectionService {
     return this.view(await this.reload(updated));
   }
 
+  /** Lists the tools of every connection the actor can see. */
+  async listTools(actor: ControlPlaneActor): Promise<DiscoveredTool[]> {
+    const visible = new Set(
+      (
+        await this.deps.store.connections.listVisible(actor.tenantId, actor.userId)
+      ).map((connection) => connection.id),
+    );
+    const tools = await this.deps.store.tools.listByTenant(actor.tenantId);
+    return tools.filter((tool) => visible.has(tool.connectionId));
+  }
+
   async setToolEnabled(
-    tenantId: string,
+    actor: ControlPlaneActor,
     toolId: string,
     enabled: boolean,
   ): Promise<void> {
-    const changed = await this.deps.store.tools.setEnabled(tenantId, toolId, enabled);
-    if (!changed) {
-      throw new GatewayError("NOT_FOUND", `Unknown tool: ${toolId}`);
-    }
-    this.deps.onCatalogueChanged?.(tenantId, {
+    const tool = (await this.listTools(actor)).find(
+      (candidate) => candidate.id === toolId,
+    );
+    if (!tool) throw new GatewayError("NOT_FOUND", `Unknown tool: ${toolId}`);
+    await this.deps.store.tools.setEnabled(actor.tenantId, toolId, enabled);
+    this.deps.onCatalogueChanged?.(actor.tenantId, {
       tools: true,
       resources: false,
       prompts: false,
     });
   }
 
-  async disconnect(tenantId: string, connectionId: string): Promise<void> {
-    const connection = await this.requireConnection(tenantId, connectionId);
+  async disconnect(actor: ControlPlaneActor, connectionId: string): Promise<void> {
+    const { tenantId } = actor;
+    const connection = await this.requireVisible(actor, connectionId);
     // An authorization server that cannot be reached must not strand the
     // connection here: the local records still go, and the operator is told
     // that the grant may still be live on the provider's side.
@@ -625,8 +659,11 @@ export class ConnectionService {
     return Promise.all(connections.map((connection) => this.view(connection)));
   }
 
-  async getConnection(tenantId: string, connectionId: string): Promise<ConnectionView> {
-    return this.view(await this.requireConnection(tenantId, connectionId));
+  async getConnection(
+    actor: ControlPlaneActor,
+    connectionId: string,
+  ): Promise<ConnectionView> {
+    return this.view(await this.requireVisible(actor, connectionId));
   }
 
   private async view(connection: UpstreamConnection): Promise<ConnectionView> {
@@ -656,6 +693,27 @@ export class ConnectionService {
     connectionId: string,
   ): Promise<UpstreamConnection> {
     const connection = await this.deps.store.connections.get(tenantId, connectionId);
+    if (!connection) {
+      this.deps.metrics.counter(Metric.TenantAccessDenied, { stage: "control_plane" });
+      throw new GatewayError("NOT_FOUND", "Connection not found");
+    }
+    return connection;
+  }
+
+  /**
+   * Answers "not found" rather than "forbidden" for a connection that exists
+   * but belongs to someone else, so the control plane does not confirm which
+   * connection ids a colleague holds.
+   */
+  private async requireVisible(
+    actor: ControlPlaneActor,
+    connectionId: string,
+  ): Promise<UpstreamConnection> {
+    const connection = await this.deps.store.connections.findVisible(
+      actor.tenantId,
+      actor.userId,
+      connectionId,
+    );
     if (!connection) {
       this.deps.metrics.counter(Metric.TenantAccessDenied, { stage: "control_plane" });
       throw new GatewayError("NOT_FOUND", "Connection not found");

@@ -102,10 +102,21 @@ export interface ConnectionRepository {
   /** Only for background jobs that legitimately span tenants. */
   getUnscoped(id: string): Promise<UpstreamConnection | null>;
   listByTenant(tenantId: string): Promise<UpstreamConnection[]>;
+  /**
+   * Workspace connections belong to every member; a personal connection is
+   * only the owner's. Sharing a tenant must not hand one member another
+   * member's credentials.
+   */
   listVisible(
     tenantId: string,
     userId: string,
   ): Promise<UpstreamConnection[]>;
+  /** The same visibility rule, for a single connection. */
+  findVisible(
+    tenantId: string,
+    userId: string,
+    id: string,
+  ): Promise<UpstreamConnection | null>;
   listAll(): Promise<UpstreamConnection[]>;
   findByAlias(tenantId: string, alias: string): Promise<UpstreamConnection | null>;
   update(
@@ -142,8 +153,7 @@ export interface ToolRepository {
     tenantId: string,
     gatewayName: string,
   ): Promise<DiscoveredTool | null>;
-  /** False when the tenant has no such tool, so a typo cannot pass silently. */
-  setEnabled(tenantId: string, id: string, enabled: boolean): Promise<boolean>;
+  setEnabled(tenantId: string, id: string, enabled: boolean): Promise<void>;
   deleteByConnection(connectionId: string): Promise<void>;
 }
 

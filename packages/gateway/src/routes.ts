@@ -234,10 +234,7 @@ export function registerRoutes(
   router.get("/api/v1/connections/:id", async (req, res, match) => {
     const principal = await requirePrincipal(req, res);
     if (!principal) return;
-    const view = await connections.getConnection(
-      principal.tenantId,
-      match.params["id"] ?? "",
-    );
+    const view = await connections.getConnection(principal, match.params["id"] ?? "");
     sendJson(res, 200, toConnectionPayload(view, config.baseUrl));
   });
 
@@ -277,10 +274,7 @@ export function registerRoutes(
   router.post("/api/v1/connections/:id/refresh", async (req, res, match) => {
     const principal = await requirePrincipal(req, res);
     if (!principal) return;
-    const sync = await connections.activateConnection(
-      principal.tenantId,
-      match.params["id"] ?? "",
-    );
+    const sync = await connections.refresh(principal, match.params["id"] ?? "");
     sendJson(res, 200, {
       added: sync.added,
       removed: sync.removed,
@@ -294,7 +288,7 @@ export function registerRoutes(
     if (!principal) return;
     const body = parseJsonBody(await readBody(req, MAX_BODY));
     const view = await connections.rename(
-      principal.tenantId,
+      principal,
       match.params["id"] ?? "",
       String(body["alias"] ?? ""),
     );
@@ -304,14 +298,14 @@ export function registerRoutes(
   router.delete("/api/v1/connections/:id", async (req, res, match) => {
     const principal = await requirePrincipal(req, res);
     if (!principal) return;
-    await connections.disconnect(principal.tenantId, match.params["id"] ?? "");
+    await connections.disconnect(principal, match.params["id"] ?? "");
     sendEmpty(res, 204);
   });
 
   router.get("/api/v1/tools", async (req, res) => {
     const principal = await requirePrincipal(req, res);
     if (!principal) return;
-    const tools = await store.tools.listByTenant(principal.tenantId);
+    const tools = await connections.listTools(principal);
     sendJson(res, 200, {
       tools: tools.map((tool) => ({
         id: tool.id,
@@ -330,7 +324,7 @@ export function registerRoutes(
     if (!principal) return;
     const body = parseJsonBody(await readBody(req, MAX_BODY));
     await connections.setToolEnabled(
-      principal.tenantId,
+      principal,
       match.params["id"] ?? "",
       body["enabled"] === true,
     );

@@ -730,6 +730,87 @@ describe("gateway security", () => {
       );
       expect(status).toBe(401);
     });
+
+    it("keeps a colleague out of a personal connection they can guess the id of", async () => {
+      const gateway = await newGateway();
+      await gateway.addPrincipal({
+        key: "colleague-key",
+        tenantId: gateway.tenantId,
+        userId: "user_colleague",
+      });
+      const server = new MockMcpServer({
+        requireAuth: false,
+        tools: [{ name: "list_notes" }],
+      });
+      await server.start();
+      started.push(server);
+      const mine = await gateway.createConnection(server.url, { alias: "mine" });
+
+      // Sharing a workspace is not the same as sharing credentials: a personal
+      // connection stays personal even to someone holding its id.
+      expect(await gateway.listConnections("colleague-key")).toEqual([]);
+      const reads = await Promise.all(
+        [
+          ["GET", `/api/v1/connections/${mine.connection_id}`, undefined],
+          ["POST", `/api/v1/connections/${mine.connection_id}/authorize`, {}],
+          ["POST", `/api/v1/connections/${mine.connection_id}/refresh`, {}],
+          ["POST", `/api/v1/connections/${mine.connection_id}/alias`, { alias: "theirs" }],
+          ["DELETE", `/api/v1/connections/${mine.connection_id}`, undefined],
+        ].map(([method, path, body]) =>
+          gateway.api(method as string, path as string, body, "colleague-key"),
+        ),
+      );
+      expect(reads.map((response) => response.status)).toEqual([404, 404, 404, 404, 404]);
+
+      const theirTools = await gateway.api("GET", "/api/v1/tools", undefined, "colleague-key");
+      expect(theirTools.body["tools"]).toEqual([]);
+
+      const myTools = (await gateway.api("GET", "/api/v1/tools")).body["tools"] as {
+        id: string;
+      }[];
+      expect(myTools.length).toBeGreaterThan(0);
+      const toggled = await gateway.api(
+        "POST",
+        `/api/v1/tools/${myTools[0]?.id}`,
+        { enabled: false },
+        "colleague-key",
+      );
+      expect(toggled.status).toBe(404);
+
+      // And the connection is untouched by all of that.
+      expect((await gateway.getConnection(mine.connection_id)).alias).toBe("mine");
+    });
+
+    it("shares a workspace connection with every member", async () => {
+      const gateway = await newGateway();
+      await gateway.addPrincipal({
+        key: "colleague-key",
+        tenantId: gateway.tenantId,
+        userId: "user_colleague",
+      });
+      const server = new MockMcpServer({
+        requireAuth: false,
+        tools: [{ name: "list_notes" }],
+      });
+      await server.start();
+      started.push(server);
+      const shared = await gateway.createConnection(server.url, {
+        alias: "shared",
+        owner_type: "WORKSPACE",
+      });
+
+      const seen = await gateway.listConnections("colleague-key");
+      expect(seen.map((connection) => connection.connection_id)).toEqual([
+        shared.connection_id,
+      ]);
+      const read = await gateway.api(
+        "GET",
+        `/api/v1/connections/${shared.connection_id}`,
+        undefined,
+        "colleague-key",
+      );
+      expect(read.status).toBe(200);
+    });
   });
 
   describe("rate limits", () => {
