@@ -160,7 +160,7 @@ through the control plane, and set the rest from the environment: which risk
 classes are blocked outright, which need confirmation, whether unreviewed
 destructive tools are exposed, both size caps, whether upstreams may ask the
 client for sampling or elicitation, and which roles may call write-class
-tools. See the configuration table in [operations.md](operations.md).
+tools. See the configuration table in [running.md](../operations/running.md).
 
 Classification tokenizes the tool name first, so `delete_repository` and
 `deleteRepository` are both recognised — a word-boundary match against the raw

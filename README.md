@@ -72,10 +72,16 @@ node apps/migration-cli/dist/main.js import      # open one link per server
 node apps/migration-cli/dist/main.js install
 ```
 
-See [docs/migration.md](docs/migration.md) for the whole journey, including
+See [docs/operations/migration.md](docs/operations/migration.md) for the whole journey, including
 `prune` and `rollback`.
 
 ## Repository layout
+
+The codebase is a modular monolith: one process, divided into workspace
+packages that may only reach each other through a published interface, in one
+direction, enforced on every pull request. [ARCHITECTURE.md](ARCHITECTURE.md)
+explains the rules and where new code goes; each directory below has a README
+answering the same questions for itself.
 
 | Path | Contents |
 | --- | --- |
@@ -93,15 +99,24 @@ See [docs/migration.md](docs/migration.md) for the whole journey, including
 | `apps/migration-cli` | `umg-migrate`: discover, import, install, prune, rollback |
 | `conformance/harness` | Mock authorization server, mock MCP server, gateway fixture |
 | `conformance/tests` | The test matrix from section 19 of the brief |
+| `tooling/architecture` | The check that enforces the module boundaries |
 
 ## Documentation
 
-- [Architecture](docs/architecture.md) — components, data model, request paths
-- [OAuth flow](docs/oauth-flow.md) — discovery, registration, refresh, rotation
-- [Threat model](docs/threat-model.md) — assets, adversaries, controls, residual risk
-- [Compatibility](docs/compatibility.md) — the four support tiers and client notes
-- [Operations](docs/operations.md) — configuration, deployment, metrics, runbooks
-- [Migration](docs/migration.md) — moving existing MCP configurations behind the gateway
+[docs/](docs/README.md) is the index. The short version:
+
+- [Getting started](docs/getting-started/running-locally.md) — run it, connect an upstream, point a client at it
+- [Architecture](docs/architecture/overview.md) — components, data model, request paths
+- [OAuth flow](docs/architecture/oauth-flow.md) — discovery, registration, refresh, rotation
+- [Threat model](docs/architecture/threat-model.md) — assets, adversaries, controls, residual risk
+- [Configuration](docs/reference/configuration.md) — every environment variable
+- [Compatibility](docs/reference/compatibility.md) — the four support tiers and client notes
+- [Operations](docs/operations/running.md) — deployment, metrics, alerting, runbooks
+- [Migration](docs/operations/migration.md) — moving existing MCP configurations behind the gateway
+- [Decisions](docs/decisions/) — what was decided, what was rejected, what it cost
+
+Contributing: [ARCHITECTURE.md](ARCHITECTURE.md) for how the code is organised,
+[CONTRIBUTING.md](CONTRIBUTING.md) for how to work in it.
 
 ## Testing
 
