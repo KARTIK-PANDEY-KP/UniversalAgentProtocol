@@ -41,6 +41,14 @@ const JSON_CONTENT_TYPE = "application/json";
 const SSE_CONTENT_TYPE = "text/event-stream";
 
 /**
+ * How a server words its refusal of a session id it does not hold. Only ever
+ * consulted for a 400 that would otherwise be reported as a protocol error, so
+ * failing to match costs the accuracy of one message rather than correctness.
+ */
+const FORGOTTEN_SESSION =
+  /not initialized|session (?:not found|expired|is invalid)|invalid session|unknown session/i;
+
+/**
  * Client side of the MCP Streamable HTTP transport. A POST either returns a
  * single JSON response or an event stream that carries progress notifications
  * and server-initiated requests before the final response.
@@ -268,10 +276,20 @@ export class StreamableHttpTransport implements McpTransport {
         challenge,
       );
     }
-    if (response.status === 404 && this.session) {
-      response.discard();
-      this.session = null;
-      throw new McpSessionExpiredError();
+    if (this.session && (response.status === 404 || response.status === 400)) {
+      // A server that has forgotten our session answers 404 by the letter of
+      // the spec, but the reference implementation answers 400 "Server not
+      // initialized" once it has restarted, and restarting is the ordinary way
+      // a session goes away. Both say the id we are holding buys us nothing.
+      const detail = response.status === 400 ? await response.text().catch(() => "") : "";
+      if (response.status === 404 || FORGOTTEN_SESSION.test(detail)) {
+        response.discard();
+        this.session = null;
+        throw new McpSessionExpiredError();
+      }
+      throw new McpProtocolError(
+        `Upstream MCP server returned HTTP 400${detail ? `: ${detail.slice(0, 200)}` : ""}`,
+      );
     }
     if (response.status === 202 || response.status === 204) {
       return response;

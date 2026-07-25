@@ -1,0 +1,26 @@
+{
+  "name": "@umg/interop",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Manual interop rig: the gateway against reference implementations and live servers",
+  "scripts": {
+    "up": "node rig.mjs up",
+    "down": "node rig.mjs down",
+    "status": "node rig.mjs status",
+    "test:protocol": "node tests/protocol.mjs",
+    "test:federation": "node tests/federation.mjs",
+    "test:bidirectional": "node tests/bidirectional.mjs",
+    "test:resilience": "node tests/resilience.mjs",
+    "test:tokens": "node tests/token-lifecycle.mjs",
+    "test": "node run-all.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/server-everything": "^2026.7.4",
+    "express": "^5.2.1",
+    "jose": "^6.2.4",
+    "oidc-provider": "^9.10.0",
+    "zod": "^4.4.3"
+  }
+}

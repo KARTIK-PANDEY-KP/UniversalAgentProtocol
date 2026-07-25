@@ -8,3 +8,5 @@ coverage/
 *.sqlite-journal
 data/
 .DS_Store
+# Pids, logs and the throwaway database the interop rig writes while running.
+interop/.run/

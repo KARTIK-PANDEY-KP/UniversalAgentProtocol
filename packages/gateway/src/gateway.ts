@@ -173,6 +173,7 @@ export class Gateway {
       vault,
       tokenClient,
       signingKeys,
+      registrations,
       clock,
       logger,
       metrics,

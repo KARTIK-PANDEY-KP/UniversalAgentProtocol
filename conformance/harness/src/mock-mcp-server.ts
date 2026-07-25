@@ -144,6 +144,8 @@ export class MockMcpServer {
   private prompts: MockPromptDefinition[];
   private nextServerRequestId = 1;
   private failuresRemaining = 0;
+  /** Set by restart(), cleared by the initialize that brings the server back. */
+  private restarted = false;
   /** Nonce this server last handed out per endpoint, when it demands one. */
   private readonly issuedNonces = new Map<string, string>();
   private nextNonce = 1;
@@ -230,6 +232,17 @@ export class MockMcpServer {
   /** Drops every session so the next request is answered with HTTP 404. */
   expireSessions(): void {
     this.sessions.clear();
+  }
+
+  /**
+   * The same loss of memory, worded the way the reference implementation words
+   * it after its process comes back: a 400 that lasts until something
+   * initializes the server again. Real servers answer both ways, so the client
+   * has to read both as the session being gone.
+   */
+  restart(): void {
+    this.sessions.clear();
+    this.restarted = true;
   }
 
   /**
@@ -507,11 +520,20 @@ export class MockMcpServer {
         ? { "mcp-session-id": session.id }
         : {};
       this.stats.initializes += 1;
+      this.restarted = false;
       json(res, 200, success(initialize.id, this.initializeResult(session)), headers);
       return;
     }
 
     if (this.options.stateful && !this.resolveSession(request)) {
+      if (this.restarted) {
+        json(res, 400, {
+          jsonrpc: JSONRPC_VERSION,
+          error: { code: -32000, message: "Bad Request: Server not initialized" },
+          id: null,
+        });
+        return;
+      }
       json(res, 404, { error: "session_expired" });
       return;
     }

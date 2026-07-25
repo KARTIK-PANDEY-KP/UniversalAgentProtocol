@@ -37,7 +37,11 @@ import type { GatewayStore } from "@umg/storage";
 
 import type { AuditService } from "./audit.js";
 import type { CatalogueChange } from "./connection-service.js";
-import { splitPromptName, splitResourceUri } from "./naming.js";
+import {
+  namespaceResultResources,
+  splitPromptName,
+  splitResourceUri,
+} from "./naming.js";
 import { paginate, type Page } from "./pagination.js";
 import type { PolicyEngine } from "./policy-engine.js";
 import type {
@@ -558,11 +562,13 @@ export class GatewayMcpHandler implements McpServerHandler {
       args,
       roles: session.roles,
     });
-    if (decision.outcome === "DENY") {
+    if (decision.outcome === "DENY" || decision.outcome === "INVALID_ARGUMENTS") {
       await this.audit(session, tool, connection, "tools/call", args, "DENIED", started, {
         reason: decision.reason ?? "denied",
       });
-      throw new GatewayError("POLICY_DENIED", decision.reason ?? "Blocked by policy");
+      throw decision.outcome === "INVALID_ARGUMENTS"
+        ? new GatewayError("INVALID_REQUEST", decision.reason ?? "Invalid arguments")
+        : new GatewayError("POLICY_DENIED", decision.reason ?? "Blocked by policy");
     }
     if (decision.outcome === "REQUIRE_CONFIRMATION") {
       const confirmed = await this.confirm(session, tool);
@@ -609,7 +615,7 @@ export class GatewayMcpHandler implements McpServerHandler {
         { alias: connection.alias },
       );
       await this.audit(session, tool, connection, "tools/call", args, "OK", started);
-      return toJsonObject(result);
+      return namespaceResultResources(toJsonObject(result), connection.alias);
     } catch (error) {
       this.deps.metrics.counter(Metric.McpToolCallFailed, { alias: connection.alias });
       await this.audit(
@@ -715,7 +721,7 @@ export class GatewayMcpHandler implements McpServerHandler {
     const connection = await this.requireVisibleConnection(session, routed.connectionId);
     const client = await this.upstreamFor(connection, session);
     const contents = await client.readResource(routed.upstreamUri);
-    return toJsonObject(contents);
+    return namespaceResultResources(toJsonObject(contents), connection.alias);
   }
 
   private async resourceSubscription(
@@ -772,7 +778,7 @@ export class GatewayMcpHandler implements McpServerHandler {
     const connection = await this.requireVisibleConnection(session, record.connectionId);
     const client = await this.upstreamFor(connection, session);
     const result = await client.getPrompt(record.upstreamName, params["arguments"] ?? {});
-    return toJsonObject(result);
+    return namespaceResultResources(toJsonObject(result), connection.alias);
   }
 
   /**

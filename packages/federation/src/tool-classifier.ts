@@ -5,7 +5,10 @@ const PATTERNS: { level: ToolRiskLevel; pattern: RegExp }[] = [
     level: "DESTRUCTIVE",
     pattern: /\b(delete|destroy|drop|purge|remove|erase|wipe|revoke|terminate|uninstall)\b/iu,
   },
-  { level: "FINANCIAL", pattern: /\b(pay|payment|charge|invoice|refund|transfer|billing|subscription)\b/iu },
+  // "subscription" is deliberately absent. MCP uses the word for resource
+  // subscriptions, so it appears in tools that have nothing to do with money,
+  // and a FINANCIAL guess costs the user a confirmation prompt on every call.
+  { level: "FINANCIAL", pattern: /\b(pay|payment|charge|invoice|refund|transfer|billing)\b/iu },
   { level: "ADMINISTRATIVE", pattern: /\b(admin|grant|permission|role|policy|member|owner|acl|scope)\b/iu },
   {
     level: "EXTERNAL_COMMUNICATION",

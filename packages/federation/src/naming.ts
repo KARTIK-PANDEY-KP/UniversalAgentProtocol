@@ -1,4 +1,4 @@
-import { sha256Hex } from "@umg/core";
+import { isRecord, sha256Hex, type JsonObject, type JsonValue } from "@umg/core";
 
 const MAX_TOOL_NAME = 128;
 const MAX_ALIAS = 40;
@@ -104,6 +104,52 @@ export function gatewayResourceUri(alias: string, upstreamUri: string): string {
   const schemeEnd = upstreamUri.indexOf(":");
   if (schemeEnd <= 0) return `${alias}+opaque:${upstreamUri}`;
   return `${alias}+${upstreamUri}`;
+}
+
+/**
+ * Rewrites the resource URIs carried inside a result so they name the
+ * gateway's copy rather than the upstream's. A tool that answers with a
+ * resource link is inviting the client to read it, and the client can only
+ * reach it back through the gateway; handing over the upstream's own URI
+ * offers a door that does not open.
+ *
+ * Only the shapes the protocol defines are touched. A `uri` that happens to
+ * appear in a tool's own payload is data, not a reference, and rewriting it
+ * would corrupt the answer.
+ */
+export function namespaceResultResources(result: JsonObject, alias: string): JsonObject {
+  const out: JsonObject = { ...result };
+  if (Array.isArray(out["content"])) {
+    out["content"] = out["content"].map((block) => namespaceBlock(block, alias));
+  }
+  if (Array.isArray(out["contents"])) {
+    out["contents"] = out["contents"].map((entry) => namespaceContents(entry, alias));
+  }
+  if (Array.isArray(out["messages"])) {
+    out["messages"] = out["messages"].map((message) =>
+      isRecord(message) && "content" in message
+        ? { ...message, content: namespaceBlock(message["content"], alias) }
+        : message,
+    );
+  }
+  return out;
+}
+
+function namespaceBlock(block: JsonValue | undefined, alias: string): JsonValue {
+  if (Array.isArray(block)) return block.map((item) => namespaceBlock(item, alias));
+  if (!isRecord(block)) return block ?? null;
+  if (block["type"] === "resource_link" && typeof block["uri"] === "string") {
+    return { ...block, uri: gatewayResourceUri(alias, block["uri"]) };
+  }
+  if (block["type"] === "resource") {
+    return { ...block, resource: namespaceContents(block["resource"], alias) };
+  }
+  return block;
+}
+
+function namespaceContents(entry: JsonValue | undefined, alias: string): JsonValue {
+  if (!isRecord(entry) || typeof entry["uri"] !== "string") return entry ?? null;
+  return { ...entry, uri: gatewayResourceUri(alias, entry["uri"]) };
 }
 
 export function splitResourceUri(

@@ -30,6 +30,12 @@ export interface RegistrationContext {
   requestedScopes: string[];
   /** Optional RFC 7591 initial access token supplied by an administrator. */
   initialAccessToken?: string | null;
+  /**
+   * Authentication methods this server accepted at registration and then
+   * refused to honour. Advertising a method is not the same as implementing
+   * it, and the only way to find out is to be turned away.
+   */
+  avoidAuthMethods?: TokenEndpointAuthMethod[];
 }
 
 export interface ResolvedClientRegistration {
@@ -293,33 +299,24 @@ export class DynamicClientRegistrationStrategy
         "Authorization server does not expose a registration endpoint",
       );
     }
-    const preference: TokenEndpointAuthMethod[] = this.deps.identity
-      .supportsPrivateKeyJwt
-      ? ["private_key_jwt", "client_secret_basic", "client_secret_post", "none"]
-      : ["client_secret_basic", "client_secret_post", "none"];
+    const avoid = context.avoidAuthMethods ?? [];
+    const preference = (
+      this.deps.identity.supportsPrivateKeyJwt
+        ? (["private_key_jwt", "client_secret_basic", "client_secret_post", "none"] as const)
+        : (["client_secret_basic", "client_secret_post", "none"] as const)
+    ).filter((method) => !avoid.includes(method));
+    if (preference.length === 0) {
+      throw new GatewayError(
+        "REGISTRATION_FAILED",
+        "Every client authentication method this server offers was refused",
+      );
+    }
     const requestedMethod = pickAuthMethod(
-      context.metadata.token_endpoint_auth_methods_supported,
-      preference,
+      context.metadata.token_endpoint_auth_methods_supported?.filter(
+        (method) => !avoid.includes(method as TokenEndpointAuthMethod),
+      ),
+      [...preference],
     );
-
-    const body: Record<string, unknown> = {
-      client_name: this.deps.identity.clientName,
-      client_uri: this.deps.identity.baseUrl,
-      redirect_uris: [context.redirectUri],
-      grant_types: ["authorization_code", "refresh_token"],
-      response_types: ["code"],
-      token_endpoint_auth_method: requestedMethod,
-      application_type: "web",
-      software_id: this.deps.identity.softwareId,
-      software_version: this.deps.identity.softwareVersion,
-    };
-    if (context.requestedScopes.length > 0) {
-      body["scope"] = context.requestedScopes.join(" ");
-    }
-    if (this.deps.identity.logoUri) body["logo_uri"] = this.deps.identity.logoUri;
-    if (requestedMethod === "private_key_jwt") {
-      body["jwks_uri"] = this.deps.identity.jwksUri;
-    }
 
     const headers: Record<string, string> = {
       "content-type": "application/json",
@@ -329,21 +326,54 @@ export class DynamicClientRegistrationStrategy
       headers["authorization"] = `Bearer ${context.initialAccessToken}`;
     }
 
-    const response = await this.deps.fetcher.request({
-      url: endpoint,
-      method: "POST",
-      headers,
-      body: JSON.stringify(body),
-      followRedirects: false,
-    });
-    const text = await response.text();
-    const payload = safeParse(text);
-    if (response.status !== 200 && response.status !== 201) {
-      throw OAuthProtocolError.fromBody(
-        response.status,
-        payload,
-        "invalid_client_metadata",
-      );
+    const attempt = async (
+      scopes: string[],
+    ): Promise<{ status: number; payload: unknown }> => {
+      const body: Record<string, unknown> = {
+        client_name: this.deps.identity.clientName,
+        client_uri: this.deps.identity.baseUrl,
+        redirect_uris: [context.redirectUri],
+        grant_types: ["authorization_code", "refresh_token"],
+        response_types: ["code"],
+        token_endpoint_auth_method: requestedMethod,
+        application_type: "web",
+        software_id: this.deps.identity.softwareId,
+        software_version: this.deps.identity.softwareVersion,
+      };
+      if (scopes.length > 0) body["scope"] = scopes.join(" ");
+      if (this.deps.identity.logoUri) body["logo_uri"] = this.deps.identity.logoUri;
+      if (requestedMethod === "private_key_jwt") {
+        body["jwks_uri"] = this.deps.identity.jwksUri;
+      }
+      const response = await this.deps.fetcher.request({
+        url: endpoint,
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+        followRedirects: false,
+      });
+      return { status: response.status, payload: safeParse(await response.text()) };
+    };
+
+    // A resource names the scopes it wants in its own metadata, and RFC 8707
+    // does not require the authorization server to have heard of them. Servers
+    // that validate registration against their own list refuse the whole client
+    // over a scope it would have accepted later at the authorization endpoint,
+    // so ask only for what this server admits to knowing.
+    const advertised = context.metadata.scopes_supported ?? [];
+    const registrationScopes =
+      advertised.length > 0
+        ? context.requestedScopes.filter((scope) => advertised.includes(scope))
+        : context.requestedScopes;
+
+    let { status, payload } = await attempt(registrationScopes);
+    if (!isRegistered(status) && registrationScopes.length > 0 && blamesScope(payload)) {
+      // Registering with no scope at all is still a usable client: scope is
+      // negotiated per authorization, and this beats having no client.
+      ({ status, payload } = await attempt([]));
+    }
+    if (!isRegistered(status)) {
+      throw OAuthProtocolError.fromBody(status, payload, "invalid_client_metadata");
     }
     if (!isRecord(payload) || typeof payload["client_id"] !== "string") {
       throw new GatewayError(
@@ -464,6 +494,33 @@ export class RegistrationSelector {
     );
   }
 
+  /**
+   * Discards a dynamic registration the server has stopped honouring and takes
+   * a new one. Only dynamic registrations can be replaced this way: the others
+   * describe a client an operator owns, and re-registering would not be ours
+   * to do.
+   */
+  async reregister(
+    context: RegistrationContext,
+    previousId: string,
+  ): Promise<ResolvedClientRegistration> {
+    const dynamic = this.strategies.find(
+      (strategy): strategy is DynamicClientRegistrationStrategy =>
+        strategy instanceof DynamicClientRegistrationStrategy,
+    );
+    if (!dynamic || !(await dynamic.supports(context.metadata))) {
+      throw new GatewayError(
+        "CLIENT_CREDENTIALS_REQUIRED",
+        "This authorization server rejected our client and offers no way to take another",
+      );
+    }
+    const resolved = {
+      ...context,
+      initialAccessToken: await this.initialAccessToken(context),
+    };
+    return dynamic.reregister(resolved, previousId);
+  }
+
   /** An operator-supplied RFC 7591 token, for a registration endpoint that needs one. */
   private async initialAccessToken(
     context: RegistrationContext,
@@ -487,4 +544,19 @@ function safeParse(text: string): unknown {
   } catch {
     return undefined;
   }
+}
+
+function isRegistered(status: number): boolean {
+  return status === 200 || status === 201;
+}
+
+/** Whether a rejected registration is complaining about the scope we asked for. */
+function blamesScope(payload: unknown): boolean {
+  if (!isRecord(payload)) return false;
+  const description = payload["error_description"];
+  const error = payload["error"];
+  const text = `${typeof error === "string" ? error : ""} ${
+    typeof description === "string" ? description : ""
+  }`;
+  return text.toLowerCase().includes("scope");
 }
