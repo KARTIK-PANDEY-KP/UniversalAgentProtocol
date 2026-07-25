@@ -41,7 +41,17 @@ export const DEFAULT_TOOL_POLICY: ToolPolicy = {
   writeRoles: [],
 };
 
-export type PolicyOutcome = "ALLOW" | "REQUIRE_CONFIRMATION" | "DENY";
+/**
+ * `INVALID_ARGUMENTS` is separate from `DENY` because the protocol treats the
+ * two differently: arguments that miss the tool's schema are a protocol error,
+ * while a policy refusal is the gateway exercising judgement over a well-formed
+ * call.
+ */
+export type PolicyOutcome =
+  | "ALLOW"
+  | "REQUIRE_CONFIRMATION"
+  | "DENY"
+  | "INVALID_ARGUMENTS";
 
 export interface PolicyDecision {
   outcome: PolicyOutcome;
@@ -99,7 +109,10 @@ export class PolicyEngine {
         .slice(0, 3)
         .map((issue) => `${issue.path} ${issue.message}`)
         .join("; ");
-      return { outcome: "DENY", reason: `Arguments do not match the tool schema: ${detail}` };
+      return {
+        outcome: "INVALID_ARGUMENTS",
+        reason: `Arguments do not match the tool schema: ${detail}`,
+      };
     }
 
     if (this.policy.confirmationRiskLevels.includes(input.tool.riskLevel)) {

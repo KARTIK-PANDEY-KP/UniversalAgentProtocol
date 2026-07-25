@@ -558,11 +558,13 @@ export class GatewayMcpHandler implements McpServerHandler {
       args,
       roles: session.roles,
     });
-    if (decision.outcome === "DENY") {
+    if (decision.outcome === "DENY" || decision.outcome === "INVALID_ARGUMENTS") {
       await this.audit(session, tool, connection, "tools/call", args, "DENIED", started, {
         reason: decision.reason ?? "denied",
       });
-      throw new GatewayError("POLICY_DENIED", decision.reason ?? "Blocked by policy");
+      throw decision.outcome === "INVALID_ARGUMENTS"
+        ? new GatewayError("INVALID_REQUEST", decision.reason ?? "Invalid arguments")
+        : new GatewayError("POLICY_DENIED", decision.reason ?? "Blocked by policy");
     }
     if (decision.outcome === "REQUIRE_CONFIRMATION") {
       const confirmed = await this.confirm(session, tool);

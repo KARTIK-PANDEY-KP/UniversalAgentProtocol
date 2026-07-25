@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { McpMethod, type JsonObject } from "@umg/core";
+import { JsonRpcErrorCode, McpMethod, type JsonObject } from "@umg/core";
 import {
   GatewayFixture,
   GatewayMcpClient,
@@ -181,6 +181,41 @@ describe("tool federation", () => {
     await expect(client.callTool("up.reshaped", { b: "text" })).rejects.toThrow(
       /schema/u,
     );
+    await client.close();
+  });
+
+  it("separates a bad argument from a refusal in the code it answers with", async () => {
+    // The protocol treats these differently and so must the gateway: a client
+    // retries an argument it can fix, and gives up on a call policy will never
+    // allow. Reporting both as one code leaves it unable to tell them apart.
+    const gateway = await newGateway();
+    const server = await openMcpServer({
+      tools: [
+        {
+          name: "count",
+          inputSchema: {
+            type: "object",
+            properties: { n: { type: "number" } },
+            required: ["n"],
+          },
+        },
+        { name: "delete_everything" },
+      ],
+    });
+    await gateway.createConnection(server.url, { alias: "up" });
+
+    const { body } = await gateway.api("GET", "/api/v1/tools");
+    const tools = body["tools"] as { id: string; name: string }[];
+    const blocked = tools.find((tool) => tool.name === "up.delete_everything");
+    await gateway.api("POST", `/api/v1/tools/${blocked?.id}`, { enabled: false });
+
+    const client = await connectedClient(gateway);
+    await expect(client.callTool("up.count", { n: "not a number" })).rejects.toMatchObject({
+      code: JsonRpcErrorCode.InvalidParams,
+    });
+    await expect(client.callTool("up.delete_everything")).rejects.toMatchObject({
+      code: JsonRpcErrorCode.PolicyDenied,
+    });
     await client.close();
   });
 
