@@ -98,6 +98,10 @@ export interface McpServerStats {
   authorizationHeadersSeen: string[];
   /** Request ids named by the `notifications/cancelled` this server received. */
   cancellations: (string | number)[];
+  /** Methods of every client notification received, cancellations included. */
+  notifications: string[];
+  /** The most recent level a client set through `logging/setLevel`. */
+  logLevel: string | null;
 }
 
 interface Session {
@@ -142,6 +146,8 @@ export class MockMcpServer {
     requestsByMethod: {},
     authorizationHeadersSeen: [],
     cancellations: [],
+    notifications: [],
+    logLevel: null,
   };
 
   constructor(private readonly options: MockMcpServerOptions = {}) {
@@ -230,6 +236,20 @@ export class MockMcpServer {
       jsonrpc: JSONRPC_VERSION,
       method: McpMethod.ResourceUpdated,
       params: { uri },
+    });
+  }
+
+  /**
+   * Emits a log line at the given severity. Servers that honour
+   * `logging/setLevel` filter for themselves, so this deliberately does not
+   * consult `stats.logLevel`: it lets a test drive a chatty upstream and check
+   * that the gateway filters on the client's behalf.
+   */
+  emitLog(level: string, data: JsonObject): void {
+    this.broadcast({
+      jsonrpc: JSONRPC_VERSION,
+      method: McpMethod.LoggingMessage,
+      params: { level, logger: this.options.name ?? "mock-mcp-server", data },
     });
   }
 
@@ -440,7 +460,7 @@ export class MockMcpServer {
 
     const parsed = JSON.parse(request.body) as unknown;
     const messages = Array.isArray(parsed) ? parsed : [parsed];
-    for (const message of messages) this.noteCancellation(message);
+    for (const message of messages) this.noteNotification(message);
 
     // Answers to server-initiated requests come back as plain POSTs.
     const responses = messages.filter(isResponse);
@@ -541,7 +561,7 @@ export class MockMcpServer {
     }
 
     const message = JSON.parse(request.body) as unknown;
-    this.noteCancellation(message);
+    this.noteNotification(message);
     res.writeHead(202, { "content-length": 0 });
     res.end();
 
@@ -563,12 +583,17 @@ export class MockMcpServer {
   }
 
   /**
-   * Records a `notifications/cancelled` and releases the handler waiting on
-   * it, which is how a real server learns it can stop working.
+   * Records an incoming client notification. A `notifications/cancelled` also
+   * releases the handler waiting on it, which is how a real server learns it
+   * can stop working.
    */
-  private noteCancellation(message: unknown): void {
+  private noteNotification(message: unknown): void {
     if (typeof message !== "object" || message === null) return;
-    if ((message as { method?: unknown }).method !== McpMethod.Cancelled) return;
+    if (isRequest(message) || isResponse(message)) return;
+    const method = (message as { method?: unknown }).method;
+    if (typeof method !== "string") return;
+    this.stats.notifications.push(method);
+    if (method !== McpMethod.Cancelled) return;
     const requestId = (message as JsonRpcNotification).params?.["requestId"];
     if (typeof requestId !== "string" && typeof requestId !== "number") return;
     this.stats.cancellations.push(requestId);
@@ -649,6 +674,14 @@ export class MockMcpServer {
       case McpMethod.ResourcesSubscribe:
       case McpMethod.ResourcesUnsubscribe:
         return success(request.id, {});
+      case McpMethod.LoggingSetLevel: {
+        const level = params["level"];
+        if (typeof level !== "string") {
+          return failure(request.id, JsonRpcErrorCode.InvalidParams, "A level is required");
+        }
+        this.stats.logLevel = level;
+        return success(request.id, {});
+      }
       case McpMethod.PromptsList:
         return success(request.id, {
           prompts: this.prompts.map(

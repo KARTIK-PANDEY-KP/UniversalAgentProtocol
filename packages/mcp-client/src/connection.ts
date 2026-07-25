@@ -208,6 +208,12 @@ export class UpstreamMcpConnection {
     this.initializeResult = null;
   }
 
+  /** Sends a one-way notification, used for the client-side notifications we relay. */
+  async notify(method: string, params: JsonObject = {}): Promise<void> {
+    const transport = await this.ensureTransport();
+    await transport.notify({ jsonrpc: JSONRPC_VERSION, method, params });
+  }
+
   /** Issues an arbitrary MCP request, used for methods the gateway proxies verbatim. */
   async request(
     method: string,

@@ -3,6 +3,7 @@ import type { AddressInfo } from "node:net";
 
 import {
   GatewayError,
+  clampText,
   constantTimeEquals,
   isRecord,
   newId,
@@ -319,41 +320,68 @@ export class Gateway {
 
   /** Creates the tenant and user rows backing the configured API keys. */
   private async ensurePrincipals(): Promise<void> {
-    const { store, clock, config } = this.services;
-    for (const principal of config.apiKeys) {
-      const tenant = await store.tenants.get(principal.tenantId);
-      if (!tenant) {
-        await store.tenants
-          .create({
-            id: principal.tenantId,
-            name: principal.tenantId,
-            status: "ACTIVE",
-            createdAt: clock.now(),
-          })
-          .catch(() => undefined);
-      }
-      const user = await store.users.get(principal.tenantId, principal.userId);
-      if (!user) {
-        await store.users
-          .create({
-            id: principal.userId,
-            tenantId: principal.tenantId,
-            externalIdentity: `${principal.tenantId}:${principal.userId}`,
-            email: `${principal.userId}@example.invalid`,
-            status: "ACTIVE",
-            createdAt: clock.now(),
-          })
-          .catch(() => undefined);
-      }
-      await store.memberships
-        .upsert({
-          tenantId: principal.tenantId,
-          userId: principal.userId,
-          role: principal.role,
+    for (const principal of this.services.config.apiKeys) {
+      await this.provisionMember({
+        tenantId: principal.tenantId,
+        userId: principal.userId,
+        role: principal.role,
+        email: `${principal.userId}@example.invalid`,
+      });
+    }
+  }
+
+  /**
+   * Makes sure the tenant, user and membership rows behind a credential exist,
+   * so a caller who authenticates does not then trip over a missing row.
+   *
+   * Two requests arriving together will both see the rows missing and both try
+   * to create them; the loser's insert is expected to fail and is ignored. A
+   * failing membership upsert is not ignored, because that is the row deciding
+   * what the caller is allowed to do.
+   */
+  private async provisionMember(member: {
+    tenantId: string;
+    userId: string;
+    role: string;
+    email: string;
+  }): Promise<void> {
+    const { store, clock, logger } = this.services;
+    if (!(await store.tenants.get(member.tenantId))) {
+      await store.tenants
+        .create({
+          id: member.tenantId,
+          name: member.tenantId,
+          status: "ACTIVE",
           createdAt: clock.now(),
         })
         .catch(() => undefined);
     }
+    if (!(await store.users.get(member.tenantId, member.userId))) {
+      await store.users
+        .create({
+          id: member.userId,
+          tenantId: member.tenantId,
+          externalIdentity: `${member.tenantId}:${member.userId}`,
+          email: member.email,
+          status: "ACTIVE",
+          createdAt: clock.now(),
+        })
+        .catch(() => undefined);
+    }
+    await store.memberships
+      .upsert({
+        tenantId: member.tenantId,
+        userId: member.userId,
+        role: member.role,
+        createdAt: clock.now(),
+      })
+      .catch((error: unknown) => {
+        logger.error("Could not record a workspace membership", {
+          tenantId: member.tenantId,
+          userId: member.userId,
+          error: clampText((error as Error).message, 200),
+        });
+      });
   }
 
   /**
@@ -418,7 +446,7 @@ export class Gateway {
   private async principalForToken(
     token: VerifiedAccessToken,
   ): Promise<NorthboundPrincipal> {
-    const { config, store, clock } = this.services;
+    const { config } = this.services;
     const claim = token.claims[config.tenantClaim];
     const tenantId =
       typeof claim === "string" && claim !== "" ? claim : config.defaultTenantId;
@@ -429,32 +457,15 @@ export class Gateway {
       );
     }
     const userId = `${issuerKey(token.issuer)}:${token.subject}`;
-
-    if (!(await store.tenants.get(tenantId))) {
-      await store.tenants
-        .create({ id: tenantId, name: tenantId, status: "ACTIVE", createdAt: clock.now() })
-        .catch(() => undefined);
-    }
-    if (!(await store.users.get(tenantId, userId))) {
-      await store.users
-        .create({
-          id: userId,
-          tenantId,
-          externalIdentity: userId,
-          email:
-            typeof token.claims["email"] === "string"
-              ? token.claims["email"]
-              : `${userId}@example.invalid`,
-          status: "ACTIVE",
-          createdAt: clock.now(),
-        })
-        .catch(() => undefined);
-    }
-
     const role = roleFromClaims(token.claims, config.rolesClaim) ?? config.defaultRole;
-    await store.memberships
-      .upsert({ tenantId, userId, role, createdAt: clock.now() })
-      .catch(() => undefined);
+    const email = token.claims["email"];
+
+    await this.provisionMember({
+      tenantId,
+      userId,
+      role,
+      email: typeof email === "string" ? email : `${userId}@example.invalid`,
+    });
 
     return {
       tenantId,

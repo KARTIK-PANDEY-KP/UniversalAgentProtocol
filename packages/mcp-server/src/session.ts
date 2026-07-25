@@ -10,6 +10,7 @@ import {
   type JsonRpcRequest,
   type JsonRpcResponse,
   type McpClientCapabilities,
+  type McpLogLevel,
   type RequestId,
 } from "@umg/core";
 
@@ -23,6 +24,9 @@ export interface DownstreamSessionHandle {
   readonly roles: string[];
   readonly protocolVersion: string;
   readonly capabilities: McpClientCapabilities;
+  /** Least severe log message the client asked to receive; null means all. */
+  readonly logLevel: McpLogLevel | null;
+  setLogLevel(level: McpLogLevel): void;
   /** Pushes a notification to the client's event stream when one is open. */
   sendNotification(notification: JsonRpcNotification): void;
   /**
@@ -47,6 +51,7 @@ export class DownstreamSession implements DownstreamSessionHandle {
   readonly id: string;
   protocolVersion: string;
   capabilities: McpClientCapabilities = {};
+  logLevel: McpLogLevel | null = null;
   lastSeenAt: number;
 
   private streams = new Set<EventStreamWriter>();
@@ -73,6 +78,10 @@ export class DownstreamSession implements DownstreamSessionHandle {
 
   get isClosed(): boolean {
     return this.closedFlag;
+  }
+
+  setLogLevel(level: McpLogLevel): void {
+    this.logLevel = level;
   }
 
   attachStream(stream: EventStreamWriter): void {

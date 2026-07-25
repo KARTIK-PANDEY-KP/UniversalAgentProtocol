@@ -157,6 +157,35 @@ export const McpMethod = {
   SamplingCreateMessage: "sampling/createMessage",
   ElicitationCreate: "elicitation/create",
   RootsList: "roots/list",
+  RootsListChanged: "notifications/roots/list_changed",
 } as const;
 
 export type McpMethodName = (typeof McpMethod)[keyof typeof McpMethod];
+
+/** RFC 5424 severities, ordered as MCP orders them: least to most severe. */
+export const MCP_LOG_LEVELS = [
+  "debug",
+  "info",
+  "notice",
+  "warning",
+  "error",
+  "critical",
+  "alert",
+  "emergency",
+] as const;
+
+export type McpLogLevel = (typeof MCP_LOG_LEVELS)[number];
+
+export function isMcpLogLevel(value: unknown): value is McpLogLevel {
+  return (
+    typeof value === "string" && (MCP_LOG_LEVELS as readonly string[]).includes(value)
+  );
+}
+
+/** True when a message at `level` is at least as severe as `minimum`. */
+export function meetsLogLevel(level: unknown, minimum: McpLogLevel): boolean {
+  // An unrecognised severity is passed through rather than dropped: silently
+  // discarding an upstream's log line is worse than showing one too many.
+  if (!isMcpLogLevel(level)) return true;
+  return MCP_LOG_LEVELS.indexOf(level) >= MCP_LOG_LEVELS.indexOf(minimum);
+}

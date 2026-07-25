@@ -589,9 +589,18 @@ export class ConnectionService {
 
   async disconnect(tenantId: string, connectionId: string): Promise<void> {
     const connection = await this.requireConnection(tenantId, connectionId);
+    // An authorization server that cannot be reached must not strand the
+    // connection here: the local records still go, and the operator is told
+    // that the grant may still be live on the provider's side.
     await this.deps.tokenManager
       .revokeConnection({ tenantId, connectionId })
-      .catch(() => undefined);
+      .catch((error: unknown) => {
+        this.deps.logger.warn("Could not revoke the upstream grant before deleting", {
+          tenantId,
+          connectionId,
+          error: clampText((error as Error).message, 200),
+        });
+      });
     await this.deps.sessions.releaseConnection(connectionId);
     await this.deps.store.tools.deleteByConnection(connectionId);
     await this.deps.store.resources.deleteByConnection(connectionId);

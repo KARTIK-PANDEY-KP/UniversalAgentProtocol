@@ -3,10 +3,13 @@ import {
   JSONRPC_VERSION,
   JsonRpcErrorCode,
   LATEST_PROTOCOL_VERSION,
+  MCP_LOG_LEVELS,
   McpMethod,
+  isMcpLogLevel,
   isRecord,
   jsonRpcFailure,
   jsonRpcSuccess,
+  meetsLogLevel,
   toJsonObject,
   type Clock,
   type DiscoveredTool,
@@ -25,6 +28,7 @@ import type {
   McpServerHandler,
   RequestContext,
 } from "@umg/mcp-server";
+import type { UpstreamMcpConnection } from "@umg/mcp-client";
 import { insufficientScopeFrom, type OAuthTokenManager } from "@umg/oauth";
 import { Metric, type Logger, type MetricsRegistry } from "@umg/observability";
 import type { RateLimiter } from "@umg/security";
@@ -35,7 +39,11 @@ import type { CatalogueChange } from "./connection-service.js";
 import { splitPromptName, splitResourceUri } from "./naming.js";
 import { paginate, type Page } from "./pagination.js";
 import type { PolicyEngine } from "./policy-engine.js";
-import type { UpstreamMessageContext, UpstreamSessionManager } from "./upstream-sessions.js";
+import type {
+  LiveUpstream,
+  UpstreamMessageContext,
+  UpstreamSessionManager,
+} from "./upstream-sessions.js";
 
 export interface GatewayHandlerDeps {
   store: GatewayStore;
@@ -96,6 +104,13 @@ export class GatewayMcpHandler implements McpServerHandler {
     string,
     (notification: JsonRpcNotification) => void
   >();
+
+  /**
+   * `session:connection` pairs that have already been told the session's log
+   * level, so an upstream opened after `logging/setLevel` is told once and an
+   * upstream that was open at the time is not told twice.
+   */
+  private readonly logLevelApplied = new Set<string>();
 
   private readonly pageSize: number;
 
@@ -205,7 +220,7 @@ export class GatewayMcpHandler implements McpServerHandler {
       case McpMethod.PromptsGet:
         return this.getPrompt(params, session);
       case McpMethod.LoggingSetLevel:
-        return {};
+        return this.setLogLevel(params, session);
       default:
         throw new GatewayError(
           "INVALID_REQUEST",
@@ -222,9 +237,113 @@ export class GatewayMcpHandler implements McpServerHandler {
       method: notification.method,
       sessionId: session.id,
     });
+    // The gateway tells every upstream it supports roots with `listChanged`,
+    // so it owes them the notification when the client's roots move.
+    if (notification.method === McpMethod.RootsListChanged) {
+      await this.relayToUpstreams(session, McpMethod.RootsListChanged, {});
+    }
+  }
+
+  /**
+   * Applies a client's logging preference. The level is recorded so upstream
+   * log notifications can be filtered on the way back, and pushed to the
+   * upstreams themselves so the ones that honour it stop sending in the first
+   * place. An upstream that has no logging capability is skipped rather than
+   * asked and refused.
+   */
+  private async setLogLevel(
+    params: JsonObject,
+    session: DownstreamSessionHandle,
+  ): Promise<JsonObject> {
+    const level = params["level"];
+    if (!isMcpLogLevel(level)) {
+      throw new GatewayError(
+        "INVALID_REQUEST",
+        `logging/setLevel needs one of: ${MCP_LOG_LEVELS.join(", ")}`,
+      );
+    }
+    session.setLogLevel(level);
+    for (const key of [...this.logLevelApplied]) {
+      if (key.startsWith(`${session.id}::`)) this.logLevelApplied.delete(key);
+    }
+    await Promise.all(
+      this.deps.sessions
+        .forDownstream(session.id)
+        .map((upstream) => this.pushLogLevel(session, upstream)),
+    );
+    return {};
+  }
+
+  /**
+   * Tells one upstream the level its downstream client asked for. Upstreams
+   * that declare no logging capability are skipped rather than asked and
+   * refused, and a failure is swallowed: the gateway filters on the way back
+   * regardless, so the client's floor is honoured either way.
+   */
+  private async pushLogLevel(
+    session: DownstreamSessionHandle,
+    upstream: LiveUpstream,
+  ): Promise<void> {
+    const level = session.logLevel;
+    if (level === null || !upstream.client.capabilities.logging) return;
+    const key = `${session.id}::${upstream.connectionId}`;
+    if (this.logLevelApplied.has(key)) return;
+    this.logLevelApplied.add(key);
+    try {
+      await upstream.client.request(
+        McpMethod.LoggingSetLevel,
+        { level },
+        { idempotent: true },
+      );
+    } catch (error) {
+      this.logLevelApplied.delete(key);
+      this.deps.logger.debug("Upstream would not accept the client's log level", {
+        sessionId: session.id,
+        error: (error as Error).message,
+      });
+    }
+  }
+
+  /**
+   * Opens or reuses the upstream session behind a connection and brings it in
+   * line with anything the downstream client has already asked for.
+   */
+  private async upstreamFor(
+    connection: UpstreamConnection,
+    session: DownstreamSessionHandle,
+  ): Promise<UpstreamMcpConnection> {
+    const client = await this.deps.sessions.acquire(connection, session.id);
+    await this.pushLogLevel(session, { connectionId: connection.id, client });
+    return client;
+  }
+
+  /** Best-effort fan-out of a client-side notification to this session's upstreams. */
+  private async relayToUpstreams(
+    session: DownstreamSessionHandle,
+    method: string,
+    params: JsonObject,
+  ): Promise<void> {
+    await Promise.all(
+      this.deps.sessions.forDownstream(session.id).map(async ({ client }) => {
+        // One unreachable upstream must not make the client's request fail;
+        // the notification carries no result the caller is waiting on.
+        try {
+          await client.notify(method, params);
+        } catch (error) {
+          this.deps.logger.debug("Could not relay a client notification upstream", {
+            method,
+            sessionId: session.id,
+            error: (error as Error).message,
+          });
+        }
+      }),
+    );
   }
 
   async onSessionClosed(session: DownstreamSessionHandle): Promise<void> {
+    for (const key of [...this.logLevelApplied]) {
+      if (key.startsWith(`${session.id}::`)) this.logLevelApplied.delete(key);
+    }
     await this.deps.sessions.releaseDownstream(session.id);
     await this.deps.store.downstreamSessions.close(session.id);
   }
@@ -270,6 +389,15 @@ export class GatewayMcpHandler implements McpServerHandler {
     }
     const session = this.deps.lookupSession(context.downstreamSessionId);
     if (!session) return;
+    if (
+      notification.method === McpMethod.LoggingMessage &&
+      session.logLevel !== null &&
+      !meetsLogLevel(notification.params?.["level"], session.logLevel)
+    ) {
+      // The client asked for a floor and some upstreams ignore it, so the
+      // gateway enforces it rather than passing the noise straight through.
+      return;
+    }
     if (notification.method === McpMethod.ResourceUpdated) {
       const uri = notification.params?.["uri"];
       if (typeof uri === "string") {
@@ -414,7 +542,7 @@ export class GatewayMcpHandler implements McpServerHandler {
       });
     }
     try {
-      const client = await this.deps.sessions.acquire(connection, session.id);
+      const client = await this.upstreamFor(connection, session);
       const result = await client.callTool(tool.upstreamName, args, {
         idempotent: tool.riskLevel === "READ_ONLY",
         signal: context.signal,
@@ -531,7 +659,7 @@ export class GatewayMcpHandler implements McpServerHandler {
       ? { connectionId: record.connectionId, upstreamUri: record.upstreamUri }
       : await this.routeByAlias(session, uri);
     const connection = await this.requireVisibleConnection(session, routed.connectionId);
-    const client = await this.deps.sessions.acquire(connection, session.id);
+    const client = await this.upstreamFor(connection, session);
     const contents = await client.readResource(routed.upstreamUri);
     return toJsonObject(contents);
   }
@@ -553,7 +681,7 @@ export class GatewayMcpHandler implements McpServerHandler {
       ? { connectionId: record.connectionId, upstreamUri: record.upstreamUri }
       : await this.routeByAlias(session, uri);
     const connection = await this.requireVisibleConnection(session, routed.connectionId);
-    const client = await this.deps.sessions.acquire(connection, session.id);
+    const client = await this.upstreamFor(connection, session);
     if (subscribe) await client.subscribeResource(routed.upstreamUri);
     else await client.unsubscribeResource(routed.upstreamUri);
     return {};
@@ -588,7 +716,7 @@ export class GatewayMcpHandler implements McpServerHandler {
     );
     if (!record) throw new GatewayError("NOT_FOUND", `Unknown prompt: ${name}`);
     const connection = await this.requireVisibleConnection(session, record.connectionId);
-    const client = await this.deps.sessions.acquire(connection, session.id);
+    const client = await this.upstreamFor(connection, session);
     const result = await client.getPrompt(record.upstreamName, params["arguments"] ?? {});
     return toJsonObject(result);
   }

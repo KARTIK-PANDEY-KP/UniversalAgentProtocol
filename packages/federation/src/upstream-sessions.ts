@@ -51,6 +51,12 @@ interface Entry {
   lastUsed: number;
 }
 
+/** An upstream client together with the connection record it belongs to. */
+export interface LiveUpstream {
+  connectionId: string;
+  client: UpstreamMcpConnection;
+}
+
 /**
  * Owns the live MCP client sessions towards upstream servers. The default
  * policy is one upstream session per downstream session so that per-session
@@ -69,6 +75,17 @@ export class UpstreamSessionManager {
 
   private key(connectionId: string, downstreamSessionId: string): string {
     return `${connectionId}::${downstreamSessionId}`;
+  }
+
+  /** The live upstream clients a downstream session is talking through. */
+  forDownstream(downstreamSessionId: string): LiveUpstream[] {
+    const suffix = `::${downstreamSessionId}`;
+    return [...this.entries]
+      .filter(([key]) => key.endsWith(suffix))
+      .map(([key, entry]) => ({
+        connectionId: key.slice(0, -suffix.length),
+        client: entry.connection,
+      }));
   }
 
   async acquire(

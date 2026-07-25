@@ -210,6 +210,86 @@ describe("interactive MCP behaviour", () => {
     await client.close();
   });
 
+  it("pushes the client's log level upstream and enforces it on the way back", async () => {
+    const upstream = await startProtectedUpstream({
+      authorizationServer: { supportsDcr: true },
+      mcpServer: { tools: [{ name: "ping" }] },
+    });
+    started.push(upstream);
+    const gateway = await newGateway();
+    await connectUpstream(gateway, upstream.url, { alias: "up" });
+
+    const client = new GatewayMcpClient({
+      baseUrl: gateway.baseUrl,
+      apiKey: gateway.apiKey,
+    });
+    await client.initialize();
+    await client.openStream();
+
+    // The level is set before any upstream session exists, which is when real
+    // clients set it: right after initialize, long before the first tool call.
+    expect(await client.request(McpMethod.LoggingSetLevel, { level: "warning" })).toEqual(
+      {},
+    );
+    expect(upstream.mcpServer.stats.logLevel).toBeNull();
+
+    await client.callTool("up.ping");
+    await waitFor(() => upstream.mcpServer.stats.logLevel === "warning");
+
+    upstream.mcpServer.emitLog("debug", { note: "too quiet to forward" });
+    upstream.mcpServer.emitLog("error", { note: "loud enough to forward" });
+
+    const forwarded = await waitForNotification(client, McpMethod.LoggingMessage);
+    expect(forwarded["level"]).toBe("error");
+    // SSE preserves order, so the debug line would already be here if the
+    // gateway had passed it through.
+    expect(
+      client.notifications.filter(
+        (notification) => notification.method === McpMethod.LoggingMessage,
+      ),
+    ).toHaveLength(1);
+    await client.close();
+  });
+
+  it("refuses a log level that is not in the protocol", async () => {
+    const gateway = await newGateway();
+    const client = new GatewayMcpClient({
+      baseUrl: gateway.baseUrl,
+      apiKey: gateway.apiKey,
+    });
+    await client.initialize();
+    await expect(
+      client.request(McpMethod.LoggingSetLevel, { level: "chatty" }),
+    ).rejects.toThrow(/debug/);
+    await client.close();
+  });
+
+  it("tells upstream servers when the client's roots change", async () => {
+    const upstream = await startProtectedUpstream({
+      authorizationServer: { supportsDcr: true },
+      mcpServer: { tools: [{ name: "ping" }] },
+    });
+    started.push(upstream);
+    const gateway = await newGateway();
+    await connectUpstream(gateway, upstream.url, { alias: "up" });
+
+    const client = new GatewayMcpClient({
+      baseUrl: gateway.baseUrl,
+      apiKey: gateway.apiKey,
+      capabilities: { roots: { listChanged: true } },
+    });
+    await client.initialize();
+    await client.callTool("up.ping");
+
+    await client.notify(McpMethod.RootsListChanged, {});
+    // The gateway advertises roots.listChanged to every upstream it opens, so
+    // an upstream that watches for the notification has to actually get it.
+    await waitFor(() =>
+      upstream.mcpServer.stats.notifications.includes(McpMethod.RootsListChanged),
+    );
+    await client.close();
+  });
+
   it("asks for reconnection when the gateway's own client secret expires", async () => {
     const upstream = await startProtectedUpstream({
       authorizationServer: {
