@@ -25,6 +25,10 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # Boundaries first: it needs no build, and a violation here is usually
+      # the reason a later step is about to fail confusingly.
+      - run: pnpm architecture
+
       - run: pnpm typecheck
 
       # The conformance suite binds loopback ports for its mock authorization
