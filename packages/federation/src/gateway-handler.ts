@@ -20,6 +20,7 @@ import {
   type McpImplementation,
   type McpInitializeParams,
   type McpInitializeResult,
+  type McpLogLevel,
   type McpTool,
   type UpstreamConnection,
 } from "@umg/core";
@@ -40,7 +41,6 @@ import { splitPromptName, splitResourceUri } from "./naming.js";
 import { paginate, type Page } from "./pagination.js";
 import type { PolicyEngine } from "./policy-engine.js";
 import type {
-  LiveUpstream,
   UpstreamMessageContext,
   UpstreamSessionManager,
 } from "./upstream-sessions.js";
@@ -106,11 +106,12 @@ export class GatewayMcpHandler implements McpServerHandler {
   >();
 
   /**
-   * `session:connection` pairs that have already been told the session's log
-   * level, so an upstream opened after `logging/setLevel` is told once and an
-   * upstream that was open at the time is not told twice.
+   * The log level each live upstream client has been told, so an upstream
+   * opened after `logging/setLevel` is told once and one that was already open
+   * is not told again on every call. Keyed by the client object, so a session
+   * that is dropped and reopened is told afresh and nothing needs sweeping.
    */
-  private readonly logLevelApplied = new Set<string>();
+  private readonly logLevelApplied = new WeakMap<UpstreamMcpConnection, McpLogLevel>();
 
   private readonly pageSize: number;
 
@@ -271,13 +272,10 @@ export class GatewayMcpHandler implements McpServerHandler {
       );
     }
     session.setLogLevel(level);
-    for (const key of [...this.logLevelApplied]) {
-      if (key.startsWith(`${session.id}::`)) this.logLevelApplied.delete(key);
-    }
     await Promise.all(
       this.deps.sessions
         .forDownstream(session.id)
-        .map((upstream) => this.pushLogLevel(session, upstream)),
+        .map((client) => this.pushLogLevel(session, client)),
     );
     return {};
   }
@@ -290,21 +288,16 @@ export class GatewayMcpHandler implements McpServerHandler {
    */
   private async pushLogLevel(
     session: DownstreamSessionHandle,
-    upstream: LiveUpstream,
+    client: UpstreamMcpConnection,
   ): Promise<void> {
     const level = session.logLevel;
-    if (level === null || !upstream.client.capabilities.logging) return;
-    const key = `${session.id}::${upstream.connectionId}`;
-    if (this.logLevelApplied.has(key)) return;
-    this.logLevelApplied.add(key);
+    if (level === null || !client.capabilities.logging) return;
+    if (this.logLevelApplied.get(client) === level) return;
+    this.logLevelApplied.set(client, level);
     try {
-      await upstream.client.request(
-        McpMethod.LoggingSetLevel,
-        { level },
-        { idempotent: true },
-      );
+      await client.request(McpMethod.LoggingSetLevel, { level }, { idempotent: true });
     } catch (error) {
-      this.logLevelApplied.delete(key);
+      this.logLevelApplied.delete(client);
       this.deps.logger.debug("Upstream would not accept the client's log level", {
         sessionId: session.id,
         error: (error as Error).message,
@@ -321,7 +314,7 @@ export class GatewayMcpHandler implements McpServerHandler {
     session: DownstreamSessionHandle,
   ): Promise<UpstreamMcpConnection> {
     const client = await this.deps.sessions.acquire(connection, session.id);
-    await this.pushLogLevel(session, { connectionId: connection.id, client });
+    await this.pushLogLevel(session, client);
     return client;
   }
 
@@ -332,7 +325,7 @@ export class GatewayMcpHandler implements McpServerHandler {
     params: JsonObject,
   ): Promise<void> {
     await Promise.all(
-      this.deps.sessions.forDownstream(session.id).map(async ({ client }) => {
+      this.deps.sessions.forDownstream(session.id).map(async (client) => {
         // One unreachable upstream must not make the client's request fail;
         // the notification carries no result the caller is waiting on.
         try {
@@ -349,9 +342,6 @@ export class GatewayMcpHandler implements McpServerHandler {
   }
 
   async onSessionClosed(session: DownstreamSessionHandle): Promise<void> {
-    for (const key of [...this.logLevelApplied]) {
-      if (key.startsWith(`${session.id}::`)) this.logLevelApplied.delete(key);
-    }
     await this.deps.sessions.releaseDownstream(session.id);
     await this.deps.store.downstreamSessions.close(session.id);
   }
