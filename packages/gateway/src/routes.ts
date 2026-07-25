@@ -39,6 +39,16 @@ export function registerRoutes(
       );
       return null;
     }
+    const decision = services.apiLimiter.check(principal.tenantId);
+    if (!decision.allowed) {
+      sendJson(
+        res,
+        429,
+        { error: "rate_limited", retry_after_seconds: decision.retryAfterSeconds },
+        { "retry-after": String(decision.retryAfterSeconds) },
+      );
+      return null;
+    }
     return principal;
   };
 

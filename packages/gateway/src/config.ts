@@ -31,6 +31,10 @@ export interface GatewayConfig {
   gatewayScopesSupported: string[];
   /** Roles allowed to call anything other than a read-only tool; empty allows all. */
   writeRoles: string[];
+  /** Tool calls a tenant may make per minute; 0 disables the limit. */
+  toolCallsPerMinute: number;
+  /** Control-plane requests a tenant may make per minute; 0 disables the limit. */
+  apiRequestsPerMinute: number;
   requestTimeoutMs: number;
   /** How long a pending upstream authorization stays valid. */
   authorizationTransactionTtlMs: number;
@@ -45,6 +49,10 @@ const DEFAULTS = {
   port: 8787,
   databaseFile: ":memory:",
   logLevel: "info" as LogLevel,
+  // Generous enough that an agent working hard never notices, low enough that
+  // a runaway loop cannot exhaust an upstream's own quota.
+  toolCallsPerMinute: 600,
+  apiRequestsPerMinute: 300,
   requestTimeoutMs: 60_000,
   authorizationTransactionTtlMs: 600_000,
 };
@@ -101,6 +109,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): GatewayConfig 
     gatewayAuthorizationServers: parseList(env["GATEWAY_AUTHORIZATION_SERVERS"]),
     gatewayScopesSupported: parseScopes(env["GATEWAY_SCOPES_SUPPORTED"] ?? "mcp"),
     writeRoles: parseList(env["GATEWAY_WRITE_ROLES"]),
+    toolCallsPerMinute: Number(
+      env["GATEWAY_TOOL_CALLS_PER_MINUTE"] ?? DEFAULTS.toolCallsPerMinute,
+    ),
+    apiRequestsPerMinute: Number(
+      env["GATEWAY_API_REQUESTS_PER_MINUTE"] ?? DEFAULTS.apiRequestsPerMinute,
+    ),
     requestTimeoutMs: Number(env["GATEWAY_REQUEST_TIMEOUT_MS"] ?? DEFAULTS.requestTimeoutMs),
     authorizationTransactionTtlMs: Number(
       env["GATEWAY_AUTHORIZATION_TTL_MS"] ?? DEFAULTS.authorizationTransactionTtlMs,

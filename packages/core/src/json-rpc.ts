@@ -64,6 +64,8 @@ export const JsonRpcErrorCode = {
   PolicyDenied: -32003,
   /** Gateway specific: upstream temporarily unavailable. */
   UpstreamUnavailable: -32004,
+  /** Gateway specific: the caller exceeded its rate limit. */
+  RateLimited: -32005,
 } as const;
 
 export function isJsonRpcRequest(value: unknown): value is JsonRpcRequest {

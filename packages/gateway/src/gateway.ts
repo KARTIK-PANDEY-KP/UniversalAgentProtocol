@@ -45,6 +45,7 @@ import {
 import {
   CredentialVault,
   LocalKeyring,
+  RateLimiter,
   SafeFetcher,
   SigningKeyStore,
   STRICT_SSRF_POLICY,
@@ -87,6 +88,10 @@ export interface GatewayServices {
   northbound: NorthboundMcpServer;
   policy: PolicyEngine;
   audit: AuditService;
+  /** Caps control-plane requests per tenant. */
+  apiLimiter: RateLimiter;
+  /** Caps tool calls per tenant. */
+  toolCallLimiter: RateLimiter;
 }
 
 /**
@@ -171,6 +176,10 @@ export class Gateway {
       writeRoles: config.writeRoles,
       ...(options.policy ?? {}),
     });
+    const perMinute = (limit: number): RateLimiter =>
+      new RateLimiter({ limit, intervalMs: 60_000 }, () => clock.now());
+    const apiLimiter = perMinute(config.apiRequestsPerMinute);
+    const toolCallLimiter = perMinute(config.toolCallsPerMinute);
     const audit = new AuditService(store, clock, logger);
 
     // The session manager and the MCP handler reference each other: upstream
@@ -224,6 +233,7 @@ export class Gateway {
       store,
       sessions: upstreamSessions,
       tokenManager,
+      toolCallLimiter,
       policy,
       audit,
       clock,
@@ -268,6 +278,8 @@ export class Gateway {
       northbound,
       policy,
       audit,
+      apiLimiter,
+      toolCallLimiter,
     };
 
     this.router = new Router();

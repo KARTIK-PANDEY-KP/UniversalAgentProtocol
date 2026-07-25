@@ -182,7 +182,11 @@ export class GatewayFixture {
     path: string,
     body?: unknown,
     apiKey = this.apiKey,
-  ): Promise<{ status: number; body: Record<string, unknown> }> {
+  ): Promise<{
+    status: number;
+    body: Record<string, unknown>;
+    headers: Record<string, string>;
+  }> {
     const response = await fetch(`${this.baseUrl}${path}`, {
       method,
       headers: {
@@ -193,7 +197,11 @@ export class GatewayFixture {
     });
     const text = await response.text();
     const parsed = text === "" ? {} : (JSON.parse(text) as Record<string, unknown>);
-    return { status: response.status, body: parsed };
+    return {
+      status: response.status,
+      body: parsed,
+      headers: Object.fromEntries(response.headers),
+    };
   }
 
   async createConnection(

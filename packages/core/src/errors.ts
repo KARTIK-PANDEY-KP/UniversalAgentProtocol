@@ -21,6 +21,7 @@ export type GatewayErrorCode =
   | "UPSTREAM_PROTOCOL_ERROR"
   | "NOT_AN_MCP_SERVER"
   | "PAYLOAD_TOO_LARGE"
+  | "RATE_LIMITED"
   | "INTERNAL";
 
 export interface GatewayErrorOptions {
@@ -68,6 +69,8 @@ export class GatewayError extends Error {
       case "INVALID_REQUEST":
       case "PAYLOAD_TOO_LARGE":
         return JsonRpcErrorCode.InvalidParams;
+      case "RATE_LIMITED":
+        return JsonRpcErrorCode.RateLimited;
       case "UNAUTHENTICATED":
       case "CONFLICT":
       case "SSRF_BLOCKED":
@@ -108,6 +111,8 @@ function defaultHttpStatus(code: GatewayErrorCode): number {
       return 409;
     case "PAYLOAD_TOO_LARGE":
       return 413;
+    case "RATE_LIMITED":
+      return 429;
     case "AUTHORIZATION_REQUIRED":
     case "CLIENT_CREDENTIALS_REQUIRED":
       return 428;

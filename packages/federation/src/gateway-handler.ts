@@ -27,6 +27,7 @@ import type {
 } from "@umg/mcp-server";
 import { insufficientScopeFrom, type OAuthTokenManager } from "@umg/oauth";
 import { Metric, type Logger, type MetricsRegistry } from "@umg/observability";
+import type { RateLimiter } from "@umg/security";
 import type { GatewayStore } from "@umg/storage";
 
 import type { AuditService } from "./audit.js";
@@ -39,6 +40,8 @@ export interface GatewayHandlerDeps {
   store: GatewayStore;
   sessions: UpstreamSessionManager;
   tokenManager: OAuthTokenManager;
+  /** Caps tool calls per tenant so one workspace cannot starve the others. */
+  toolCallLimiter: RateLimiter;
   policy: PolicyEngine;
   audit: AuditService;
   clock: Clock;
@@ -294,6 +297,7 @@ export class GatewayMcpHandler implements McpServerHandler {
     if (typeof name !== "string") {
       throw new GatewayError("INVALID_REQUEST", "tools/call requires a tool name");
     }
+    this.deps.toolCallLimiter.require(session.tenantId, "tool calls");
     const args = params["arguments"] ?? {};
     const started = this.deps.clock.now();
 

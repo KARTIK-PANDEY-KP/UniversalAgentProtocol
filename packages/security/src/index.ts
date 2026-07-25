@@ -6,3 +6,4 @@ export * from "./vault.js";
 export * from "./locks.js";
 export * from "./signing-keys.js";
 export * from "./origin.js";
+export * from "./rate-limit.js";

@@ -140,7 +140,11 @@ export class BackgroundWorker {
         this.config.sessionIdleMs,
       );
       const transactions = await this.services.store.transactions.purgeExpired(now);
-      report.processed = downstream + upstream + transactions;
+      // Rate limit buckets are per tenant and would otherwise outlive the
+      // tenants that created them.
+      const buckets =
+        this.services.apiLimiter.sweep() + this.services.toolCallLimiter.sweep();
+      report.processed = downstream + upstream + transactions + buckets;
       for (const [scope, count] of [
         ["downstream", downstream],
         ["upstream", upstream],
@@ -153,6 +157,7 @@ export class BackgroundWorker {
         downstream,
         upstream,
         transactions,
+        buckets,
       });
     });
   }

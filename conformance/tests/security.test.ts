@@ -672,4 +672,62 @@ describe("gateway security", () => {
       expect(status).toBe(401);
     });
   });
+
+  describe("rate limits", () => {
+    it("throttles a tenant that floods the control plane, and says for how long", async () => {
+      const gateway = await newGateway({ config: { apiRequestsPerMinute: 3 } });
+
+      const statuses: number[] = [];
+      let retryAfter: string | undefined;
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        const response = await gateway.api("GET", "/api/v1/connections");
+        statuses.push(response.status);
+        retryAfter ??= response.headers["retry-after"];
+      }
+
+      expect(statuses.slice(0, 3)).toEqual([200, 200, 200]);
+      expect(statuses.slice(3)).toEqual([429, 429]);
+      expect(Number(retryAfter)).toBeGreaterThan(0);
+    });
+
+    it("throttles tool calls per tenant without touching another tenant", async () => {
+      const gateway = await newGateway({ config: { toolCallsPerMinute: 2 } });
+      await gateway.addPrincipal({
+        key: "other-key",
+        tenantId: "tenant_other",
+        userId: "user_other",
+      });
+      const server = new MockMcpServer({ tools: [{ name: "ping" }] });
+      await server.start();
+      started.push(server);
+
+      // Both tenants connect to the same upstream, each with its own budget.
+      await gateway.createConnection(server.url, { alias: "up" });
+      const otherConnection = await gateway.api(
+        "POST",
+        "/api/v1/connections",
+        { mcp_url: server.url, alias: "up" },
+        "other-key",
+      );
+      expect(otherConnection.status).toBe(201);
+
+      const client = new GatewayMcpClient({
+        baseUrl: gateway.baseUrl,
+        apiKey: gateway.apiKey,
+      });
+      await client.initialize();
+      await client.callTool("up.ping");
+      await client.callTool("up.ping");
+      await expect(client.callTool("up.ping")).rejects.toThrow(/too many tool calls/iu);
+      await client.close();
+
+      const neighbour = new GatewayMcpClient({
+        baseUrl: gateway.baseUrl,
+        apiKey: "other-key",
+      });
+      await neighbour.initialize();
+      expect(await neighbour.callTool("up.ping")).toBeDefined();
+      await neighbour.close();
+    });
+  });
 });
