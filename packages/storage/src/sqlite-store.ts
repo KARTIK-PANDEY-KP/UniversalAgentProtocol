@@ -21,7 +21,12 @@ import {
   type UpstreamSessionRecord,
   type User,
 } from "@umg/core";
-import { InProcessLock, type DistributedLock, type LockOptions } from "@umg/security";
+import {
+  InProcessLock,
+  type DistributedLock,
+  type LockContext,
+  type LockOptions,
+} from "@umg/security";
 
 import {
   DDL,
@@ -86,27 +91,55 @@ class SqlLeaseLock implements DistributedLock {
 
   async withLock<T>(
     key: string,
-    fn: () => Promise<T>,
+    fn: (context: LockContext) => Promise<T>,
     options: LockOptions = {},
   ): Promise<T> {
     const leaseMs = options.leaseMs ?? 30_000;
     const waitMs = options.waitMs ?? 15_000;
-    return this.local.withLock(key, async () => {
-      const deadline = this.now() + waitMs;
-      while (!this.tryAcquire(key, leaseMs)) {
-        if (this.now() >= deadline) {
-          throw new GatewayError("CONFLICT", `Timed out acquiring lock ${key}`, {
-            retryable: true,
-          });
+    // One deadline for both waits, so a caller asking to wait 15 seconds does
+    // not wait 15 for the local queue and 15 more for the row.
+    const deadline = this.now() + waitMs;
+
+    return this.local.withLock(
+      key,
+      async (local) => {
+        while (!this.tryAcquire(key, leaseMs)) {
+          if (this.now() >= deadline) {
+            throw new GatewayError("CONFLICT", `Timed out acquiring lock ${key}`, {
+              retryable: true,
+            });
+          }
+          await sleep(25 + Math.floor(Math.random() * 50));
         }
-        await sleep(25 + Math.floor(Math.random() * 50));
-      }
-      try {
-        return await fn();
-      } finally {
-        this.release(key);
-      }
-    });
+
+        const controller = new AbortController();
+        const abortWithLocal = (): void => {
+          controller.abort();
+        };
+        local.signal.addEventListener("abort", abortWithLocal, { once: true });
+
+        // Extend the lease while the work runs. Without this a slow refresh
+        // silently loses its lock to a replica that assumed it had died, and
+        // two replicas rotate the same refresh token.
+        const renewal = setInterval(
+          () => {
+            if (!this.renew(key, leaseMs)) controller.abort();
+          },
+          Math.max(1_000, Math.floor(leaseMs / 3)),
+        );
+        renewal.unref?.();
+
+        try {
+          return await fn({ signal: controller.signal });
+        } finally {
+          clearInterval(renewal);
+          local.signal.removeEventListener("abort", abortWithLocal);
+          this.release(key);
+        }
+      },
+      // The local lease covers the wait for the row as well as the work.
+      { waitMs, leaseMs: waitMs + leaseMs },
+    );
   }
 
   private tryAcquire(key: string, leaseMs: number): boolean {
@@ -118,6 +151,14 @@ class SqlLeaseLock implements DistributedLock {
          WHERE distributed_locks.expires_at <= ?`,
       )
       .run(key, this.owner, now + leaseMs, now);
+    return Number(result.changes) > 0;
+  }
+
+  /** Returns false once the row is gone or another owner has taken it. */
+  private renew(key: string, leaseMs: number): boolean {
+    const result = this.db
+      .prepare(`UPDATE distributed_locks SET expires_at = ? WHERE key = ? AND owner = ?`)
+      .run(this.now() + leaseMs, key, this.owner);
     return Number(result.changes) > 0;
   }
 

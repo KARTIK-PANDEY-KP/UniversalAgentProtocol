@@ -214,4 +214,39 @@ describe("SqliteGatewayStore", () => {
     expect(order).toEqual(["a-start", "a-end", "b-start", "b-end"]);
     store.close();
   });
+
+  it("holds the lease for as long as the critical section runs", async () => {
+    const store = createInMemoryStore();
+    const leaseMs = 3_000;
+
+    // Renewal fires at a third of the lease, so a section outliving one
+    // interval is enough to tell a renewed lease from a lapsed one.
+    await store.locks.withLock(
+      "renewed",
+      async ({ signal }) => {
+        await new Promise((resolve) => setTimeout(resolve, 1_200));
+        expect(signal.aborted).toBe(false);
+      },
+      { leaseMs, waitMs: 5_000 },
+    );
+
+    store.close();
+  });
+
+  it("gives up rather than queueing behind a lock forever", async () => {
+    const store = createInMemoryStore();
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    const holder = store.locks.withLock("busy", async () => held, { leaseMs: 10_000 });
+    await expect(
+      store.locks.withLock("busy", async () => "never", { waitMs: 50 }),
+    ).rejects.toThrow(/lock busy/u);
+
+    release();
+    await holder;
+    store.close();
+  });
 });

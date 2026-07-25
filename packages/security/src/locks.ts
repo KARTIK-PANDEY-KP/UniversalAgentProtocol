@@ -7,10 +7,19 @@ export interface LockOptions {
   leaseMs?: number;
 }
 
+export interface LockContext {
+  /**
+   * Aborted when the lease expires. A critical section that can stop should
+   * watch this: the caller has already been told the lease is gone, and
+   * whatever the section does from here happens outside anyone's expectations.
+   */
+  readonly signal: AbortSignal;
+}
+
 export interface DistributedLock {
   withLock<T>(
     key: string,
-    fn: () => Promise<T>,
+    fn: (context: LockContext) => Promise<T>,
     options?: LockOptions,
   ): Promise<T>;
 }
@@ -21,56 +30,102 @@ export interface DistributedLock {
  * only one replica refreshes a given connection at a time.
  */
 export class InProcessLock implements DistributedLock {
-  private readonly queues = new Map<string, Promise<unknown>>();
+  /**
+   * The last promise queued for each key. A newcomer waits on it and replaces
+   * it, so waiters form a chain rather than a list this class has to manage.
+   */
+  private readonly tails = new Map<string, Promise<unknown>>();
 
   async withLock<T>(
     key: string,
-    fn: () => Promise<T>,
+    fn: (context: LockContext) => Promise<T>,
     options: LockOptions = {},
   ): Promise<T> {
-    const previous = this.queues.get(key) ?? Promise.resolve();
+    const previous = this.tails.get(key) ?? Promise.resolve();
+
     let release!: () => void;
-    const barrier = new Promise<void>((resolve) => {
+    const held = new Promise<void>((resolve) => {
       release = resolve;
     });
-    this.queues.set(
-      key,
-      previous.then(
-        () => barrier,
-        () => barrier,
-      ),
+    const tail = previous.then(
+      () => held,
+      () => held,
     );
-    await previous.catch(() => undefined);
-    const timeout = options.leaseMs;
-    try {
-      if (timeout === undefined) return await fn();
-      return await withDeadline(fn(), timeout, key);
-    } finally {
+    this.tails.set(key, tail);
+
+    const finish = (): void => {
       release();
+      // Only if nobody queued behind us, or we would drop their turn.
       queueMicrotask(() => {
-        if (this.queues.get(key) === barrier) this.queues.delete(key);
+        if (this.tails.get(key) === tail) this.tails.delete(key);
       });
+    };
+
+    try {
+      await waitForTurn(previous, options.waitMs, key);
+    } catch (error) {
+      // We never entered, so let whoever is behind us through immediately.
+      finish();
+      throw error;
+    }
+
+    const controller = new AbortController();
+    const work = fn({ signal: controller.signal });
+
+    // The next holder waits for the work itself, not for this call to return.
+    // A lease expiry gives up on the result; it does not make it safe for
+    // someone else to start, which is the whole point of holding the lock.
+    void work.then(finish, finish);
+
+    if (options.leaseMs === undefined) return await work;
+
+    let expiry: NodeJS.Timeout | undefined;
+    try {
+      return await Promise.race([
+        work,
+        new Promise<never>((_resolve, reject) => {
+          expiry = setTimeout(() => {
+            controller.abort();
+            reject(
+              new GatewayError("INTERNAL", `Lock lease expired for ${key}`, {
+                retryable: true,
+              }),
+            );
+          }, options.leaseMs);
+        }),
+      ]);
+    } finally {
+      if (expiry) clearTimeout(expiry);
+      // Swallow a rejection nobody is waiting for any more.
+      void work.catch(() => undefined);
     }
   }
 }
 
-async function withDeadline<T>(
-  work: Promise<T>,
-  ms: number,
+async function waitForTurn(
+  previous: Promise<unknown>,
+  waitMs: number | undefined,
   key: string,
-): Promise<T> {
+): Promise<void> {
+  // The holder's failure is the holder's problem; we only need our turn.
+  const turn = previous.then(
+    () => undefined,
+    () => undefined,
+  );
+  if (waitMs === undefined) return turn;
+
   let timer: NodeJS.Timeout | undefined;
   try {
-    return await Promise.race([
-      work,
+    await Promise.race([
+      turn,
       new Promise<never>((_resolve, reject) => {
         timer = setTimeout(() => {
           reject(
-            new GatewayError("INTERNAL", `Lock lease expired for ${key}`, {
+            new GatewayError("INTERNAL", `Timed out waiting for lock ${key}`, {
               retryable: true,
             }),
           );
-        }, ms);
+        }, waitMs);
       }),
     ]);
   } finally {
