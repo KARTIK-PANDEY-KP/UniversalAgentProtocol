@@ -7,6 +7,7 @@ import {
   GatewayMcpClient,
   MockMcpServer,
   connectUpstream,
+  readSse,
   startProtectedUpstream,
 } from "@umg/conformance";
 
@@ -209,6 +210,46 @@ describe("MCP transport", () => {
     await client.close();
   });
 
+  it("asks a client that opened no standalone stream on its own request", async () => {
+    const upstream = await startProtectedUpstream({
+      authorizationServer: { supportsDcr: true },
+      mcpServer: {
+        tools: [
+          {
+            name: "ask",
+            handler: async (_args, hooks) => {
+              const answer = await hooks.request("elicitation/create", {
+                message: "Which branch?",
+                requestedSchema: { type: "object" },
+              });
+              const result = "result" in answer ? answer.result : {};
+              return { content: [{ type: "text", text: JSON.stringify(result) }] };
+            },
+          },
+        ],
+      },
+    });
+    started.push(upstream);
+    const gateway = await newGateway();
+    await connectUpstream(gateway, upstream.url, { alias: "up" });
+
+    const client = new GatewayMcpClient({
+      baseUrl: gateway.baseUrl,
+      apiKey: gateway.apiKey,
+      capabilities: { elicitation: {} },
+      onElicitation: () => ({ action: "accept", content: { branch: "main" } }),
+    });
+    await client.initialize();
+
+    // No openStream: several hosts never issue the GET at all. The elicitation
+    // has to travel on the stream answering the call that provoked it, which
+    // is the only stream this client has.
+    const result = await client.callTool("up.ask", {}, { stream: true });
+    const text = String((result["content"] as { text: string }[])[0]?.text ?? "");
+    expect(text).toContain("main");
+    await client.close();
+  });
+
   it("rejects an upstream request the downstream client cannot handle", async () => {
     const upstream = await startProtectedUpstream({
       authorizationServer: { supportsDcr: true },
@@ -391,6 +432,65 @@ describe("MCP transport", () => {
     await client.close();
   });
 
+  it("refuses a POST body that is not a JSON-RPC message", async () => {
+    const gateway = await newGateway();
+    const client = new GatewayMcpClient({
+      baseUrl: gateway.baseUrl,
+      apiKey: gateway.apiKey,
+    });
+    await client.initialize();
+
+    // Neither request, notification nor response. Accepting it with a 202
+    // would tell the client the gateway had taken on work it silently dropped.
+    const response = await fetch(`${gateway.baseUrl}/mcp`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${gateway.apiKey}`,
+        "content-type": "application/json",
+        "mcp-session-id": client.session ?? "",
+      },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 7, params: {} }),
+    });
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { id: unknown; error: { code: number } };
+    expect(body.id).toBe(7);
+    expect(body.error.code).toBe(-32600);
+    await client.close();
+  });
+
+  it("puts each notification on one stream, not on every stream at once", async () => {
+    const gateway = await newGateway();
+    const server = new MockMcpServer({ requireAuth: false, tools: [{ name: "one" }] });
+    await server.start();
+    started.push(server);
+    const connection = await gateway.createConnection(server.url, { alias: "up" });
+
+    const client = new GatewayMcpClient({
+      baseUrl: gateway.baseUrl,
+      apiKey: gateway.apiKey,
+    });
+    await client.initialize();
+    await client.openStream();
+
+    // A second stream, as a client mid-reconnect has. Delivering the change
+    // down both would make a client reading both act on it twice.
+    const second = await openRawStream(gateway, client.session ?? "");
+    started.push(second);
+
+    server.setTools([{ name: "one" }, { name: "two" }], false);
+    await gateway.api("POST", `/api/v1/connections/${connection.connection_id}/refresh`);
+    await waitFor(() => second.events.length >= 1);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    expect(second.events).toHaveLength(1);
+    expect(
+      client.notifications.filter(
+        (notification) => notification.method === "notifications/tools/list_changed",
+      ),
+    ).toHaveLength(0);
+    await client.close();
+  });
+
   it("serves an MCP server that needs no authorization at all", async () => {
     const open = new MockMcpServer({
       requireAuth: false,
@@ -405,6 +505,44 @@ describe("MCP transport", () => {
     expect(connection.tool_count).toBe(1);
   });
 });
+
+/**
+ * A second event stream on an existing session, opened without the harness
+ * client so a test can see exactly what each stream was sent.
+ */
+async function openRawStream(
+  gateway: GatewayFixture,
+  sessionId: string,
+): Promise<{ events: JsonObject[]; stop(): Promise<void> }> {
+  const controller = new AbortController();
+  const response = await fetch(`${gateway.baseUrl}/mcp`, {
+    method: "GET",
+    headers: {
+      authorization: `Bearer ${gateway.apiKey}`,
+      accept: "text/event-stream",
+      "mcp-session-id": sessionId,
+    },
+    signal: controller.signal,
+  });
+  if (!response.body) throw new Error("The gateway opened no stream");
+  const events: JsonObject[] = [];
+  void (async () => {
+    try {
+      for await (const event of readSse(response.body as ReadableStream<Uint8Array>)) {
+        events.push(JSON.parse(event.data) as JsonObject);
+      }
+    } catch {
+      // Ends when the test stops it.
+    }
+  })();
+  await new Promise((resolve) => setTimeout(resolve, 25));
+  return {
+    events,
+    stop: async () => {
+      controller.abort();
+    },
+  };
+}
 
 /** Polls until the condition holds, so a test never sleeps a fixed guess. */
 async function waitFor(

@@ -9,6 +9,8 @@ import {
   isJsonRpcNotification,
   isJsonRpcRequest,
   isJsonRpcResponse,
+  isRecord,
+  isRequestId,
   jsonRpcFailure,
   jsonRpcSuccess,
   negotiateProtocolVersion,
@@ -256,6 +258,29 @@ export class NorthboundMcpServer {
       return;
     }
 
+    // Anything that is not a request, a notification or a response would be
+    // dropped by the loop below, and the client would read the 202 that
+    // followed as an acknowledgement of work nobody is going to do.
+    const malformed = messages.find(
+      (message) =>
+        !isJsonRpcRequest(message) &&
+        !isJsonRpcNotification(message) &&
+        !isJsonRpcResponse(message),
+    );
+    if (malformed !== undefined) {
+      const id = isRecord(malformed) && isRequestId(malformed["id"]) ? malformed["id"] : null;
+      sendJson(
+        res,
+        400,
+        jsonRpcFailure(
+          id,
+          JsonRpcErrorCode.InvalidRequest,
+          "Not a JSON-RPC 2.0 request, notification or response",
+        ),
+      );
+      return;
+    }
+
     const initializeRequest = messages.find(
       (message) => isJsonRpcRequest(message) && message.method === McpMethod.Initialize,
     );
@@ -375,6 +400,9 @@ export class NorthboundMcpServer {
     });
     const disconnected = new AbortController();
     res.on("close", () => disconnected.abort());
+    // A server-to-client request raised while these run belongs on this
+    // stream, which for most clients is the only one they ever open.
+    session.beginRequestStream(stream);
     try {
       for (const request of requests) {
         const response = await this.execute(request, session, {
@@ -384,6 +412,7 @@ export class NorthboundMcpServer {
         stream.write(response);
       }
     } finally {
+      session.endRequestStream(stream);
       stream.end();
     }
   }

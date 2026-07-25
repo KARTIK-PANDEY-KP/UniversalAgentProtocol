@@ -64,21 +64,28 @@ export const JsonRpcErrorCode = {
   RateLimited: -32005,
 } as const;
 
+export function isRequestId(value: unknown): value is RequestId {
+  return typeof value === "string" || typeof value === "number";
+}
+
 export function isJsonRpcRequest(value: unknown): value is JsonRpcRequest {
   if (!isJsonRpcEnvelope(value)) return false;
-  return "method" in value && "id" in value && value.id !== null;
+  return typeof value["method"] === "string" && isRequestId(value["id"]);
 }
 
 export function isJsonRpcNotification(
   value: unknown,
 ): value is JsonRpcNotification {
   if (!isJsonRpcEnvelope(value)) return false;
-  return "method" in value && !("id" in value);
+  return typeof value["method"] === "string" && !("id" in value);
 }
 
 export function isJsonRpcResponse(value: unknown): value is JsonRpcResponse {
   if (!isJsonRpcEnvelope(value)) return false;
-  return "result" in value || "error" in value;
+  if (!("result" in value) && !("error" in value)) return false;
+  // A response answers something, so it carries the id it answers. Null is
+  // permitted only for a failure the peer could not attribute to a request.
+  return isRequestId(value["id"]) || ("error" in value && value["id"] === null);
 }
 
 export function isJsonRpcFailure(value: unknown): value is JsonRpcFailure {

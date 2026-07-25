@@ -260,9 +260,17 @@ export class GatewayMcpClient {
     options: CallToolOptions,
   ): Promise<JsonObject> {
     for await (const event of readSse(body)) {
-      const message = JSON.parse(event.data) as JsonRpcResponse | JsonRpcNotification;
+      const message = JSON.parse(event.data) as
+        | JsonRpcResponse
+        | JsonRpcNotification
+        | JsonRpcRequest;
       if ("method" in message) {
-        if (message.method === McpMethod.Progress) {
+        // MCP puts a server-to-client request on the stream carrying the
+        // request that caused it, which for a client that never opened the
+        // standalone stream is this one. Answering it is the client's job.
+        if ("id" in message) {
+          void this.answerServerRequest(message);
+        } else if (message.method === McpMethod.Progress) {
           options.onProgress?.((message.params ?? {}) as JsonObject);
         } else {
           this.notifications.push(message);

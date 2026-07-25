@@ -69,7 +69,15 @@ export class DownstreamSession implements DownstreamSessionHandle {
   logLevel: McpLogLevel | null = null;
   lastSeenAt: number;
 
+  /** Standalone streams the client opened with GET. */
   private streams = new Set<EventStreamWriter>();
+  /**
+   * Streams opened to answer a POST, newest last. MCP asks a server to put a
+   * request it raises on the stream carrying the request that caused it, and
+   * many clients never open a standalone stream at all, so without these a
+   * `sampling/createMessage` from an upstream would have nowhere to go.
+   */
+  private readonly requestStreams: EventStreamWriter[] = [];
   private readonly history: HistoryEntry[] = [];
   private nextEventId = 1;
   private readonly pending = new Map<RequestId, PendingServerRequest>();
@@ -123,23 +131,56 @@ export class DownstreamSession implements DownstreamSessionHandle {
     this.streams.delete(stream);
   }
 
+  /** Registers the stream answering one POST for the life of that request. */
+  beginRequestStream(stream: EventStreamWriter): void {
+    this.requestStreams.push(stream);
+  }
+
+  endRequestStream(stream: EventStreamWriter): void {
+    const at = this.requestStreams.lastIndexOf(stream);
+    if (at >= 0) this.requestStreams.splice(at, 1);
+  }
+
   hasStream(): boolean {
-    for (const stream of this.streams) {
-      if (!stream.isClosed) return true;
-    }
-    return false;
+    return this.liveRequestStream() !== undefined || this.liveStream() !== undefined;
   }
 
   sendNotification(notification: JsonRpcNotification): void {
     this.deliver(notification);
   }
 
+  private liveRequestStream(): EventStreamWriter | undefined {
+    for (let index = this.requestStreams.length - 1; index >= 0; index -= 1) {
+      const stream = this.requestStreams[index];
+      if (stream && !stream.isClosed) return stream;
+    }
+    return undefined;
+  }
+
   /**
-   * Records a message against the session's event ids and writes it to every
-   * live stream. With no stream open it stays in the history undelivered, so a
-   * client that reconnects still learns about catalogue changes.
+   * The newest standalone stream. A client that reconnected before its old
+   * stream was reaped is reading the new one, and the old one is about to be
+   * swept.
    */
-  private deliver(message: JsonRpcNotification | JsonRpcRequest): void {
+  private liveStream(): EventStreamWriter | undefined {
+    let newest: EventStreamWriter | undefined;
+    for (const stream of this.streams) {
+      if (!stream.isClosed) newest = stream;
+    }
+    return newest;
+  }
+
+  /**
+   * Records a message against the session's event ids and writes it to exactly
+   * one stream: MCP forbids putting the same message on several, since a
+   * client reading two would act on it twice. With nothing open it stays in
+   * the history undelivered, so a client that reconnects still learns about
+   * catalogue changes.
+   */
+  private deliver(
+    message: JsonRpcNotification | JsonRpcRequest,
+    preferred?: EventStreamWriter,
+  ): void {
     const entry: HistoryEntry = {
       id: this.nextEventId,
       message,
@@ -149,10 +190,10 @@ export class DownstreamSession implements DownstreamSessionHandle {
     this.history.push(entry);
     if (this.history.length > HISTORY_LIMIT) this.history.shift();
 
-    const live = [...this.streams].filter((stream) => !stream.isClosed);
-    if (live.length === 0) return;
+    const target = preferred?.isClosed === false ? preferred : this.liveStream();
+    if (!target) return;
     entry.delivered = true;
-    for (const stream of live) stream.write(message, entry.id);
+    target.write(message, entry.id);
   }
 
   async sendRequest(
@@ -186,7 +227,7 @@ export class DownstreamSession implements DownstreamSessionHandle {
       }, timeoutMs);
       this.pending.set(id, { resolve, reject, timer });
     });
-    this.deliver(request);
+    this.deliver(request, this.liveRequestStream());
     return result;
   }
 
@@ -240,5 +281,7 @@ export class DownstreamSession implements DownstreamSessionHandle {
     this.pending.clear();
     for (const stream of this.streams) stream.end();
     this.streams.clear();
+    for (const stream of this.requestStreams) stream.end();
+    this.requestStreams.length = 0;
   }
 }
