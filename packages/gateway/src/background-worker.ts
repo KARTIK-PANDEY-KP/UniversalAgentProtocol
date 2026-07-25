@@ -216,12 +216,22 @@ export class BackgroundWorker {
   }
 
   private schedule(intervalMs: number, run: () => Promise<unknown>): void {
+    // A pass that outlasts its interval must not be joined by the next one.
+    // Every job is idempotent, so an overlap is not incorrect, but a slow
+    // authorization server would pile up passes that each wait on it.
+    let inFlight = false;
     const timer = setInterval(() => {
-      void run().catch((error: unknown) => {
-        this.services.logger.error("Background job threw", {
-          error: clampText((error as Error).message, 200),
+      if (inFlight) return;
+      inFlight = true;
+      void run()
+        .catch((error: unknown) => {
+          this.services.logger.error("Background job threw", {
+            error: clampText((error as Error).message, 200),
+          });
+        })
+        .finally(() => {
+          inFlight = false;
         });
-      });
     }, intervalMs);
     timer.unref?.();
     this.timers.push(timer);
