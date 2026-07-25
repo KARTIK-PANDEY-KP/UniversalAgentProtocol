@@ -14,6 +14,7 @@ All configuration is environment variables.
 | `PORT` | `8787` | Bind port |
 | `GATEWAY_DATABASE_FILE` | `:memory:` | SQLite path; set this or nothing survives a restart |
 | `GATEWAY_ENCRYPTION_KEYS` | generated | `kid:base64key[,kid:base64key]`, first entry active |
+| `GATEWAY_SIGNING_KEY` | generated | PEM for the EC P-256 key that signs client assertions and DPoP proofs; `\n` is accepted for newlines |
 | `GATEWAY_API_KEYS` | none | `key:tenantId:userId[:label[:role]]` entries, comma separated; the role defaults to `member` |
 | `GATEWAY_WRITE_ROLES` | none | Roles allowed to call anything other than a read-only tool; unset allows every role |
 | `GATEWAY_BLOCKED_RISK_LEVELS` | none | Risk classes never exposed, whatever an upstream advertises |

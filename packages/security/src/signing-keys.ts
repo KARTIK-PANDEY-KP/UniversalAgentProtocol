@@ -19,14 +19,35 @@ export interface JsonWebKeySet {
   keys: Record<string, unknown>[];
 }
 
+/**
+ * The members RFC 7638 requires for each key type, in the lexicographic order
+ * the specification prescribes. Every other member — `kid`, `use`, `alg` — is
+ * excluded, which is what makes the thumbprint an identity for the key rather
+ * than for the document describing it.
+ */
+const THUMBPRINT_MEMBERS: Record<string, readonly string[]> = {
+  EC: ["crv", "kty", "x", "y"],
+  OKP: ["crv", "kty", "x"],
+  RSA: ["e", "kty", "n"],
+  oct: ["k", "kty"],
+};
+
+/** RFC 7638 JWK thumbprint, SHA-256, base64url. */
 function thumbprint(publicJwk: Record<string, unknown>): string {
-  const canonical = JSON.stringify({
-    crv: publicJwk["crv"],
-    kty: publicJwk["kty"],
-    x: publicJwk["x"],
-    y: publicJwk["y"],
-  });
-  return createHash("sha256").update(canonical).digest("base64url");
+  const kty = publicJwk["kty"];
+  const members = typeof kty === "string" ? THUMBPRINT_MEMBERS[kty] : undefined;
+  if (!members) {
+    throw new GatewayError("INTERNAL", `Cannot compute a thumbprint for a ${String(kty)} key`);
+  }
+  const canonical: Record<string, unknown> = {};
+  for (const member of members) {
+    const value = publicJwk[member];
+    if (typeof value !== "string") {
+      throw new GatewayError("INTERNAL", `Key is missing the required member ${member}`);
+    }
+    canonical[member] = value;
+  }
+  return createHash("sha256").update(JSON.stringify(canonical)).digest("base64url");
 }
 
 function toSigningKey(privateKey: KeyObject, createdAt: number): SigningKey {
@@ -34,6 +55,16 @@ function toSigningKey(privateKey: KeyObject, createdAt: number): SigningKey {
     string,
     unknown
   >;
+  // Everything that consumes these keys — client assertions and DPoP proofs —
+  // signs ES256. A key of any other shape would produce assertions no
+  // authorization server accepts, and it is better to say so at startup.
+  if (publicJwk["kty"] !== "EC" || publicJwk["crv"] !== "P-256") {
+    throw new GatewayError(
+      "INTERNAL",
+      "The gateway signs with ES256, so its signing key must be an EC P-256 key",
+      { data: { kty: String(publicJwk["kty"]), crv: String(publicJwk["crv"] ?? "") } },
+    );
+  }
   return { kid: thumbprint(publicJwk), privateKey, publicJwk, createdAt };
 }
 

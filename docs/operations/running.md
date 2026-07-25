@@ -32,6 +32,11 @@ what matters when you deploy.
   residual risks in [threat-model.md](../architecture/threat-model.md).
 - `GATEWAY_ENCRYPTION_KEYS` set explicitly. Without it a key is generated at
   boot and every stored credential becomes undecryptable on restart.
+- `GATEWAY_SIGNING_KEY` set to a stable EC P-256 key, generated once with
+  `openssl ecparam -genkey -name prime256v1 -noout | openssl pkcs8 -topk8 -nocrypt`.
+  Without it a key is generated at boot, and after every restart authorization
+  servers holding a cached JWKS reject the gateway's client assertions until
+  that cache expires.
 - `GATEWAY_DATABASE_FILE` on durable storage, not an ephemeral container
   filesystem.
 - `GATEWAY_ALLOWED_ORIGINS` set, so a page in a browser cannot drive the MCP

@@ -138,7 +138,12 @@ export class Gateway {
       },
       metrics,
     );
-    const signingKeys = SigningKeyStore.generate(() => clock.now());
+    // Authorization servers cache the JWKS. Generating a key at boot means
+    // every restart invalidates client assertions until those caches expire,
+    // so a deployment that uses private_key_jwt should configure one.
+    const signingKeys = config.signingKeyPem
+      ? SigningKeyStore.fromPem(config.signingKeyPem, () => clock.now())
+      : SigningKeyStore.generate(() => clock.now());
     const identity = gatewayIdentityFromBaseUrl(config.baseUrl, {
       ...(config.logoUri ? { logoUri: config.logoUri } : {}),
     });

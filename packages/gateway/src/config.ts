@@ -18,6 +18,12 @@ export interface GatewayConfig {
   databaseFile: string;
   /** `kid:base64key[,kid:base64key]`; the first entry is the active key. */
   encryptionKeyRing: string | null;
+  /**
+   * PEM for the EC P-256 key that signs client assertions and DPoP proofs.
+   * Unset generates one at boot, which is fine until a restart: authorization
+   * servers cache the JWKS and reject assertions signed by the new key.
+   */
+  signingKeyPem: string | null;
   logLevel: LogLevel;
   allowedOrigins: string[];
   /**
@@ -148,6 +154,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): GatewayConfig 
     port: Number(env["PORT"] ?? DEFAULTS.port),
     databaseFile: env["GATEWAY_DATABASE_FILE"] ?? DEFAULTS.databaseFile,
     encryptionKeyRing: env["GATEWAY_ENCRYPTION_KEYS"] ?? null,
+    // Newlines survive an environment variable badly, so accept the escaped form.
+    signingKeyPem: env["GATEWAY_SIGNING_KEY"]?.replaceAll("\\n", "\n") ?? null,
     logLevel: (env["LOG_LEVEL"] as LogLevel | undefined) ?? DEFAULTS.logLevel,
     allowedOrigins: parseList(env["GATEWAY_ALLOWED_ORIGINS"]),
     returnToOrigins: parseList(env["GATEWAY_RETURN_TO_ORIGINS"]),
