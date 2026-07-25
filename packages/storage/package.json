@@ -13,7 +13,6 @@
   },
   "dependencies": {
     "@umg/core": "workspace:*",
-    "@umg/observability": "workspace:*",
     "@umg/security": "workspace:*"
   }
 }

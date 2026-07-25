@@ -15,7 +15,6 @@
     "umg-migrate": "./dist/main.js"
   },
   "dependencies": {
-    "@umg/core": "workspace:*",
     "@umg/security": "workspace:*"
   }
 }

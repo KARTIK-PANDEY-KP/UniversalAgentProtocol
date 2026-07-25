@@ -29,15 +29,9 @@ importers:
       '@umg/gateway':
         specifier: workspace:*
         version: link:../../packages/gateway
-      '@umg/observability':
-        specifier: workspace:*
-        version: link:../../packages/observability
 
   apps/migration-cli:
     dependencies:
-      '@umg/core':
-        specifier: workspace:*
-        version: link:../../packages/core
       '@umg/security':
         specifier: workspace:*
         version: link:../../packages/security
@@ -50,18 +44,9 @@ importers:
       '@umg/gateway':
         specifier: workspace:*
         version: link:../../packages/gateway
-      '@umg/mcp-server':
-        specifier: workspace:*
-        version: link:../../packages/mcp-server
       '@umg/observability':
         specifier: workspace:*
         version: link:../../packages/observability
-      '@umg/security':
-        specifier: workspace:*
-        version: link:../../packages/security
-      '@umg/storage':
-        specifier: workspace:*
-        version: link:../../packages/storage
 
   conformance/tests:
     dependencies:
@@ -118,9 +103,6 @@ importers:
       '@umg/federation':
         specifier: workspace:*
         version: link:../federation
-      '@umg/mcp-client':
-        specifier: workspace:*
-        version: link:../mcp-client
       '@umg/mcp-server':
         specifier: workspace:*
         version: link:../mcp-server
@@ -196,9 +178,6 @@ importers:
       '@umg/core':
         specifier: workspace:*
         version: link:../core
-      '@umg/observability':
-        specifier: workspace:*
-        version: link:../observability
       '@umg/security':
         specifier: workspace:*
         version: link:../security

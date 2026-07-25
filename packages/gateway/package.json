@@ -14,7 +14,6 @@
   "dependencies": {
     "@umg/core": "workspace:*",
     "@umg/federation": "workspace:*",
-    "@umg/mcp-client": "workspace:*",
     "@umg/mcp-server": "workspace:*",
     "@umg/oauth": "workspace:*",
     "@umg/observability": "workspace:*",

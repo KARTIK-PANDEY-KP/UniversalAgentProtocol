@@ -4,15 +4,30 @@
     "rootDir": "src",
     "outDir": "dist"
   },
-  "include": ["src/**/*.ts"],
+  "include": [
+    "src/**/*.ts"
+  ],
   "references": [
-    { "path": "../core" },
-    { "path": "../observability" },
-    { "path": "../security" },
-    { "path": "../storage" },
-    { "path": "../oauth" },
-    { "path": "../mcp-client" },
-    { "path": "../mcp-server" },
-    { "path": "../federation" }
+    {
+      "path": "../core"
+    },
+    {
+      "path": "../observability"
+    },
+    {
+      "path": "../security"
+    },
+    {
+      "path": "../storage"
+    },
+    {
+      "path": "../oauth"
+    },
+    {
+      "path": "../mcp-server"
+    },
+    {
+      "path": "../federation"
+    }
   ]
 }
