@@ -7,6 +7,7 @@
     "@umg/conformance": "workspace:*",
     "@umg/core": "workspace:*",
     "@umg/federation": "workspace:*",
-    "@umg/gateway": "workspace:*"
+    "@umg/gateway": "workspace:*",
+    "@umg/security": "workspace:*"
   }
 }

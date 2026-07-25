@@ -36,9 +36,18 @@ function aadFor(context: EncryptionContext): Buffer {
 
 export class CredentialVault {
   constructor(
-    private readonly keys: KeyProvider,
+    private keys: KeyProvider,
     private readonly metrics?: MetricsRegistry,
   ) {}
+
+  /**
+   * Installs a key ring whose active key has changed. The replacement must
+   * still contain every key that existing ciphertext was sealed under, so
+   * stored credentials stay readable until a rewrap pass has moved them.
+   */
+  rotateKeyring(keys: KeyProvider): void {
+    this.keys = keys;
+  }
 
   async encrypt(context: EncryptionContext, plaintext: string): Promise<string> {
     return envelopeEncrypt(this.keys, plaintext, aadFor(context));

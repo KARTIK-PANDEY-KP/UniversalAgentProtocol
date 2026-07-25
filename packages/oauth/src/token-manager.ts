@@ -266,15 +266,34 @@ export class OAuthTokenManager {
    * Returns a usable upstream access token, refreshing under a connection
    * scoped lock when required. Concurrent callers collapse onto a single
    * provider refresh and observe the rotated token.
+   *
+   * `minRemainingMs` lets a caller demand more headroom than the default
+   * safety window. The background worker uses it to renew tokens ahead of an
+   * interactive request; because the refresh still runs under the same lock
+   * and compare-and-swap, a scheduled renewal and a live request cannot
+   * rotate the refresh token twice.
    */
-  async getValidAccessToken(ref: ConnectionRef): Promise<string> {
+  async getValidAccessToken(
+    ref: ConnectionRef,
+    options: { minRemainingMs?: number } = {},
+  ): Promise<string> {
+    const headroom = Math.max(
+      options.minRemainingMs ?? 0,
+      this.deps.config.accessTokenSafetyWindowMs,
+    );
     const connection = await this.requireConnection(ref);
     this.assertUsable(connection);
 
-    if (this.isAccessTokenUsable(connection)) {
+    if (this.isAccessTokenUsable(connection, headroom)) {
       return this.decryptAccessToken(connection);
     }
     if (!connection.refreshTokenEncrypted) {
+      // Without a refresh token an expired grant can only be repaired by the
+      // user, but a token that merely lacks the requested headroom is still
+      // perfectly usable right now.
+      if (this.isAccessTokenUsable(connection)) {
+        return this.decryptAccessToken(connection);
+      }
       await this.markReauthRequired(connection, "access_token_expired");
       throw this.authorizationRequired(connection, "The access token expired");
     }
@@ -284,7 +303,7 @@ export class OAuthTokenManager {
       async () => {
         const latest = await this.requireConnection(ref);
         this.assertUsable(latest);
-        if (this.isAccessTokenUsable(latest)) {
+        if (this.isAccessTokenUsable(latest, headroom)) {
           return this.decryptAccessToken(latest);
         }
         return this.refreshLocked(latest);
@@ -596,13 +615,13 @@ export class OAuthTokenManager {
     return breaker;
   }
 
-  private isAccessTokenUsable(connection: UpstreamConnection): boolean {
+  private isAccessTokenUsable(
+    connection: UpstreamConnection,
+    headroomMs = this.deps.config.accessTokenSafetyWindowMs,
+  ): boolean {
     if (!connection.accessTokenEncrypted) return false;
     if (connection.accessTokenExpiresAt === null) return true;
-    return (
-      connection.accessTokenExpiresAt - this.deps.config.accessTokenSafetyWindowMs >
-      this.deps.clock.now()
-    );
+    return connection.accessTokenExpiresAt - headroomMs > this.deps.clock.now();
   }
 
   private assertUsable(connection: UpstreamConnection): void {

@@ -15,6 +15,7 @@
     "test:watch": "vitest",
     "check": "pnpm typecheck && pnpm test",
     "start": "node apps/gateway-api/dist/main.js",
+    "worker": "node apps/background-worker/dist/main.js",
     "dev": "node --experimental-strip-types apps/gateway-api/src/main.ts",
     "migrate": "node apps/migration-cli/dist/main.js"
   },

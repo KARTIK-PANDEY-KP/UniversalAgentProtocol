@@ -62,6 +62,11 @@ export class UpstreamSessionManager {
 
   constructor(private readonly deps: UpstreamSessionDeps) {}
 
+  /** Live upstream sessions, for health reporting and the reaper's tests. */
+  get size(): number {
+    return this.entries.size;
+  }
+
   private key(connectionId: string, downstreamSessionId: string): string {
     return `${connectionId}::${downstreamSessionId}`;
   }

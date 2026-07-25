@@ -18,6 +18,12 @@ importers:
         specifier: ^3.0.5
         version: 3.2.7(@types/node@22.20.1)
 
+  apps/background-worker:
+    dependencies:
+      '@umg/gateway':
+        specifier: workspace:*
+        version: link:../../packages/gateway
+
   apps/gateway-api:
     dependencies:
       '@umg/gateway':
@@ -62,6 +68,9 @@ importers:
       '@umg/gateway':
         specifier: workspace:*
         version: link:../../packages/gateway
+      '@umg/security':
+        specifier: workspace:*
+        version: link:../../packages/security
 
   packages/core: {}
 

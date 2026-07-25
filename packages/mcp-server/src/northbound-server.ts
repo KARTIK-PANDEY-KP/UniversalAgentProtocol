@@ -158,8 +158,8 @@ export class NorthboundMcpServer {
   }
 
   /** Drops sessions that have not been seen within the idle window. */
-  async sweep(now: number): Promise<number> {
-    const idleMs = this.options.sessionIdleMs ?? 30 * 60_000;
+  /** Closes sessions untouched for longer than `idleMs`. */
+  async sweep(now: number, idleMs = this.options.sessionIdleMs ?? 30 * 60_000): Promise<number> {
     let removed = 0;
     for (const [id, session] of [...this.sessions]) {
       if (now - session.lastSeenAt <= idleMs) continue;

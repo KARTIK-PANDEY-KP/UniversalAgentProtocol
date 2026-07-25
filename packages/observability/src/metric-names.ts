@@ -17,6 +17,12 @@ export const Metric = {
   McpSessionRecreated: "mcp_session_recreated_total",
   McpToolSchemaChanged: "mcp_tool_schema_changed_total",
 
+  BackgroundJobRun: "background_job_run_total",
+  BackgroundJobFailed: "background_job_failed_total",
+  BackgroundJobDuration: "background_job_duration",
+  CredentialRewrapped: "credential_rewrapped_total",
+  SessionReaped: "session_reaped_total",
+
   SsrfRequestBlocked: "ssrf_request_blocked_total",
   InvalidIssuer: "invalid_issuer_total",
   InvalidState: "invalid_state_total",

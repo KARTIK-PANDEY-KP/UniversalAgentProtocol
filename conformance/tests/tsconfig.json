@@ -11,6 +11,7 @@
     { "path": "../harness" },
     { "path": "../../packages/core" },
     { "path": "../../packages/federation" },
-    { "path": "../../packages/gateway" }
+    { "path": "../../packages/gateway" },
+    { "path": "../../packages/security" }
   ]
 }
