@@ -201,15 +201,21 @@ and a compare-and-swap, not a mutex — which is what makes the process count
 independent of the replica count. Any number of API replicas and worker
 replicas can run against one database.
 
-Today that generality is unreachable, because the store is SQLite: "the same
-database" means "the same file", which means one machine. The interesting part
-is that nothing above `packages/storage` assumes this. Implementing
-`GatewayStore` over Postgres is the whole change, and it turns one machine into
-three services — API, worker, database — that scale independently.
+Which database is a deployment's choice, and the choice is the topology.
+`GATEWAY_DATABASE_FILE` gives SQLite, where "the same database" means "the same
+file" and therefore one machine: two processes on one VM, and nothing beyond
+it. `GATEWAY_DATABASE_URL` gives Postgres, where the same sentence means a host
+and a port, and the three services — API, worker, database — become independent
+of each other. Neither choice is visible above `packages/storage`.
 
-Until then the honest count is one. Two processes sharing a file works on a
-single VM, and does not survive being split across a platform where storage
-attaches to exactly one service; see the Render notes in
-[operations/running.md](../operations/running.md). Where the worker cannot be
-its own service, its jobs are better run in-process or from a scheduler than
-left unrun.
+A file is the right answer for a single instance and for tests, where the
+alternative is a server to run. It stops being the right answer at the second
+replica, and on a platform whose storage attaches to exactly one service it was
+never available; see the Render notes in
+[operations/running.md](../operations/running.md).
+
+The distinction is not only about scale. Under SQLite every store call
+completes without yielding, which hides races that a real round trip exposes —
+the catalogue writer lock in `packages/federation` exists because running the
+conformance suite against Postgres found two rediscoveries interleaving. Both
+backends are worth running the suite against for that reason, and both are.

@@ -28,12 +28,17 @@ services:
           name: uap-gateway
           envVarKey: RENDER_EXTERNAL_URL
 
-      # The free plan has no disk and its filesystem is ephemeral, so this file
-      # is gone on every deploy, restart and idle spin-down, taking the stored
-      # OAuth grants with it. Attach a disk (see the commented block below) and
-      # point this at the mount path to keep them.
-      - key: GATEWAY_DATABASE_FILE
-        value: /tmp/gateway.sqlite
+      # State lives off the instance, which is the only way it survives here:
+      # the free plan has no disk and an ephemeral filesystem, so a SQLite file
+      # would be gone on every deploy, restart and idle spin-down, taking the
+      # stored OAuth grants with it. Set out of band, like the other secrets.
+      - key: GATEWAY_DATABASE_URL
+        sync: false
+
+      # Keeps the tables out of `public`, which Supabase publishes over HTTP
+      # through PostgREST. These tables hold credentials.
+      - key: GATEWAY_DATABASE_SCHEMA
+        value: uap
 
       # Set out of band: see the deploy notes. Values are not in the repo.
       - key: GATEWAY_API_KEYS
@@ -49,10 +54,21 @@ services:
       - key: LOG_LEVEL
         value: info
 
-    # Persistence needs a paid instance type; disks are not offered on free.
-    # With one attached, point GATEWAY_DATABASE_FILE at /var/data/gateway.sqlite.
+    # A single instance on one VM can use a file instead, by attaching a disk
+    # (paid plans only) and setting GATEWAY_DATABASE_FILE to a path on it in
+    # place of GATEWAY_DATABASE_URL:
     #
     # disk:
     #   name: gateway-data
     #   mountPath: /var/data
     #   sizeGB: 1
+    #
+    # The background worker wants its own service. It is left out here because
+    # the free plan does not offer one; with Postgres it no longer needs to
+    # share a machine with the API, only the database.
+    #
+    # - type: worker
+    #   name: uap-worker
+    #   runtime: node
+    #   buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm build
+    #   startCommand: node apps/background-worker/dist/main.js
