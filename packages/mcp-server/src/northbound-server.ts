@@ -91,7 +91,6 @@ const STREAMING_METHODS = new Set<string>([
   McpMethod.ToolsCall,
   McpMethod.ResourcesRead,
   McpMethod.PromptsGet,
-  McpMethod.CompletionComplete,
 ]);
 
 /**
@@ -210,6 +209,21 @@ export class NorthboundMcpServer {
       (message) => isJsonRpcRequest(message) && message.method === McpMethod.Initialize,
     );
     if (initializeRequest) {
+      // Initialization establishes the session everything else is answered
+      // within, so it cannot share a batch: silently dropping the rest would
+      // lose work the client believes it submitted.
+      if (messages.length > 1) {
+        sendJson(
+          res,
+          400,
+          jsonRpcFailure(
+            (initializeRequest as JsonRpcRequest).id,
+            JsonRpcErrorCode.InvalidRequest,
+            "initialize must be sent on its own, not batched with other messages",
+          ),
+        );
+        return;
+      }
       await this.handleInitialize(initializeRequest as JsonRpcRequest, res, principal);
       return;
     }

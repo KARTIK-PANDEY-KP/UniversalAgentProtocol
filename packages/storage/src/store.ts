@@ -146,7 +146,8 @@ export interface ToolRepository {
     tenantId: string,
     gatewayName: string,
   ): Promise<DiscoveredTool | null>;
-  setEnabled(tenantId: string, id: string, enabled: boolean): Promise<void>;
+  /** False when the tenant has no such tool, so a typo cannot pass silently. */
+  setEnabled(tenantId: string, id: string, enabled: boolean): Promise<boolean>;
   deleteByConnection(connectionId: string): Promise<void>;
 }
 

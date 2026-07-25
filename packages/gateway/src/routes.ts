@@ -6,7 +6,7 @@ import {
   buildClientIdMetadataDocument,
   type OAuthCallbackInput,
 } from "@umg/oauth";
-import { canonicalizeUrl } from "@umg/security";
+import { canonicalizeUrl, isReturnUrlAllowed } from "@umg/security";
 
 import { parseJsonBody, type GatewayServices } from "./gateway.js";
 import type { Router } from "./router.js";
@@ -22,6 +22,7 @@ export function registerRoutes(
 ): void {
   const { config, identity, signingKeys, connections, store, tokenManager } = services;
   const urlPolicy = { allowHttp: config.allowHttp };
+  const returnToOrigins = [new URL(config.baseUrl).origin, ...config.returnToOrigins];
 
   const requirePrincipal = async (
     req: IncomingMessage,
@@ -120,12 +121,26 @@ export function registerRoutes(
 
     try {
       const result = await tokenManager.exchangeCode(input);
-      await connections
+      // The grant is good even if discovery is not, but saying "authorized"
+      // over a catalogue that never synced sends the user away believing the
+      // job is done.
+      const activation = await connections
         .activateConnection(result.tenantId, result.connectionId)
-        .catch(() => undefined);
-      if (result.returnTo) {
+        .then(() => null)
+        .catch((error: unknown) => toGatewayError(error));
+
+      if (result.returnTo && isReturnUrlAllowed(result.returnTo, returnToOrigins)) {
         res.writeHead(302, { location: result.returnTo });
         res.end();
+        return;
+      }
+      if (activation) {
+        sendHtml(
+          res,
+          200,
+          "Connection authorized, but its tools are not available yet",
+          `The credentials were stored. Discovering what this server offers failed: ${activation.message}`,
+        );
         return;
       }
       sendHtml(
@@ -215,11 +230,20 @@ export function registerRoutes(
     const principal = await requirePrincipal(req, res);
     if (!principal) return;
     const body = await readOptionalBody(req);
+    const returnTo = typeof body["return_to"] === "string" ? body["return_to"] : null;
+    if (returnTo !== null && !isReturnUrlAllowed(returnTo, returnToOrigins)) {
+      sendJson(res, 400, {
+        error: "invalid_return_to",
+        error_description:
+          "return_to must point at the gateway or an origin listed in GATEWAY_RETURN_TO_ORIGINS",
+      });
+      return;
+    }
     const result = await connections.startAuthorization({
       tenantId: principal.tenantId,
       userId: principal.userId,
       connectionId: match.params["id"] ?? "",
-      returnTo: typeof body["return_to"] === "string" ? body["return_to"] : null,
+      returnTo,
     });
     sendJson(res, 200, { authorization_url: result.authorizationUrl });
   });

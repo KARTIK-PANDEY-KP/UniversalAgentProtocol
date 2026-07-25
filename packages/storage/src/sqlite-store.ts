@@ -373,9 +373,8 @@ export class SqliteGatewayStore implements GatewayStore {
         toolTable.findMany({ connection_id: connectionId }, "gateway_name"),
       findByGatewayName: async (tenantId, gatewayName) =>
         toolTable.findOne({ tenant_id: tenantId, gateway_name: gatewayName }),
-      setEnabled: async (tenantId, id, enabled) => {
-        toolTable.update({ id, tenant_id: tenantId }, { enabled });
-      },
+      setEnabled: async (tenantId, id, enabled) =>
+        toolTable.update({ id, tenant_id: tenantId }, { enabled }) > 0,
       deleteByConnection: async (connectionId) => {
         toolTable.delete({ connection_id: connectionId });
       },

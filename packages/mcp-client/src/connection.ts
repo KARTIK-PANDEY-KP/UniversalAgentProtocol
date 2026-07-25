@@ -36,6 +36,9 @@ import {
   type TransportHooks,
 } from "./transport.js";
 
+/** Enough pages for any real catalogue, few enough to catch a cursor loop. */
+const MAX_PAGES = 100;
+
 export interface ToolCallContext {
   progressToken?: string | number;
   timeoutMs?: number;
@@ -139,7 +142,13 @@ export class UpstreamMcpConnection {
         McpMethod.ResourcesTemplatesList,
         "resourceTemplates",
       );
-    } catch {
+    } catch (error) {
+      // Templates are an optional part of the resources capability and plenty
+      // of servers advertise resources without them, so a failure here is not
+      // allowed to fail the whole sync — but it is worth saying out loud.
+      this.options.logger.debug("Upstream does not list resource templates", {
+        error: (error as Error).message,
+      });
       return [];
     }
   }
@@ -269,16 +278,21 @@ export class UpstreamMcpConnection {
   private async collectPage<T>(method: string, field: string): Promise<T[]> {
     const items: T[] = [];
     let cursor: string | undefined;
-    for (let page = 0; page < 100; page += 1) {
+    for (let page = 0; page < MAX_PAGES; page += 1) {
       const params: JsonObject = cursor === undefined ? {} : { cursor };
       const result = await this.request(method, params, { idempotent: true });
       const values = result[field];
       if (Array.isArray(values)) items.push(...(values as T[]));
       const next = result["nextCursor"];
-      if (typeof next !== "string" || next === "") break;
+      if (typeof next !== "string" || next === "") return items;
       cursor = next;
     }
-    return items;
+    // Storing a partial catalogue as if it were complete would silently hide
+    // tools from every downstream client, so this fails loudly instead.
+    throw new GatewayError(
+      "UPSTREAM_PROTOCOL_ERROR",
+      `Upstream ${method} still had more pages after ${MAX_PAGES}`,
+    );
   }
 
   private buildRequest(method: string, params: JsonObject): JsonRpcRequest {

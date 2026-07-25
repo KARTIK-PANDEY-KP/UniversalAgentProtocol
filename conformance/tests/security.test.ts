@@ -450,6 +450,65 @@ describe("gateway security", () => {
       expect(transaction?.pkceVerifierEncrypted.startsWith("v1.")).toBe(true);
       expect(transaction?.pkceVerifierEncrypted).not.toContain(challenge);
     });
+
+    it("refuses to be turned into a redirect to somewhere else", async () => {
+      const upstream = await startProtectedUpstream({
+        authorizationServer: { supportsDcr: true },
+        mcpServer: { tools: [{ name: "ping" }] },
+      });
+      started.push(upstream);
+      const gateway = await newGateway();
+      const created = await gateway.createConnection(upstream.url, { alias: "up" });
+
+      // A finished OAuth flow that lands on an attacker's page is a very
+      // convincing phishing hop, so the target has to be allowed up front.
+      const rejected = await gateway.api(
+        "POST",
+        `/api/v1/connections/${created.connection_id}/authorize`,
+        { return_to: "https://attacker.example.com/harvest" },
+      );
+      expect(rejected.status).toBe(400);
+      expect(rejected.body["error"]).toBe("invalid_return_to");
+
+      // The gateway's own origin needs no configuration.
+      const accepted = await gateway.api(
+        "POST",
+        `/api/v1/connections/${created.connection_id}/authorize`,
+        { return_to: `${gateway.baseUrl}/done` },
+      );
+      expect(accepted.status).toBe(200);
+    });
+
+    it("sends the user back to an origin the operator allowed", async () => {
+      const upstream = await startProtectedUpstream({
+        authorizationServer: { supportsDcr: true },
+        mcpServer: { tools: [{ name: "ping" }] },
+      });
+      started.push(upstream);
+      const gateway = await newGateway({
+        config: { returnToOrigins: ["https://console.example.com"] },
+      });
+      const created = await gateway.createConnection(upstream.url, { alias: "up" });
+
+      const authorize = await gateway.api(
+        "POST",
+        `/api/v1/connections/${created.connection_id}/authorize`,
+        { return_to: "https://console.example.com/connections" },
+      );
+      expect(authorize.status).toBe(200);
+
+      const redirect = await fetch(String(authorize.body["authorization_url"]), {
+        redirect: "manual",
+      });
+      const callback = await fetch(redirect.headers.get("location") ?? "", {
+        headers: { authorization: `Bearer ${gateway.apiKey}` },
+        redirect: "manual",
+      });
+      expect(callback.status).toBe(302);
+      expect(callback.headers.get("location")).toBe(
+        "https://console.example.com/connections",
+      );
+    });
   });
 
   describe("hostile upstream content", () => {

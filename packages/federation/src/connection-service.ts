@@ -383,7 +383,16 @@ export class ConnectionService {
         ),
       onDpopNonce: (nonce) =>
         this.deps.tokenManager.rememberResourceNonce(connection.id, nonce),
-    }).catch(() => null);
+    }).catch((error: unknown) => {
+      // The transport recorded before authorization was a guess, and it stays
+      // a guess if this fails. The catalogue sync that follows will surface a
+      // real failure; this only costs accuracy in what we report.
+      this.deps.logger.warn("Could not re-probe an authorized upstream", {
+        connectionId: connection.id,
+        error: (error as Error).message,
+      });
+      return null;
+    });
     if (!probe?.initializeResult) return;
     await this.deps.store.mcpServers.update(server.tenantId, server.id, {
       transportType: probe.transportType,
@@ -533,14 +542,6 @@ export class ConnectionService {
     }
   }
 
-  async refreshAllCatalogues(tenantId: string): Promise<void> {
-    const connections = await this.deps.store.connections.listByTenant(tenantId);
-    for (const connection of connections) {
-      if (connection.status !== "CONNECTED") continue;
-      await this.syncCatalogue(connection).catch(() => undefined);
-    }
-  }
-
   async rename(
     tenantId: string,
     connectionId: string,
@@ -557,7 +558,16 @@ export class ConnectionService {
     const updated = await this.deps.store.connections.update(connection.id, {
       alias: normalized,
     });
-    await this.syncCatalogue(updated).catch(() => undefined);
+    // Every tool, resource and prompt is namespaced by the alias, so the
+    // rename only takes effect once the catalogue is rebuilt. An upstream that
+    // is down leaves the old names in place, which is confusing enough to say.
+    await this.syncCatalogue(updated).catch((error: unknown) => {
+      this.deps.logger.warn("Renamed a connection but could not renamespace it", {
+        connectionId: connection.id,
+        alias: normalized,
+        error: (error as Error).message,
+      });
+    });
     return this.view(await this.reload(updated));
   }
 
@@ -566,7 +576,15 @@ export class ConnectionService {
     toolId: string,
     enabled: boolean,
   ): Promise<void> {
-    await this.deps.store.tools.setEnabled(tenantId, toolId, enabled);
+    const changed = await this.deps.store.tools.setEnabled(tenantId, toolId, enabled);
+    if (!changed) {
+      throw new GatewayError("NOT_FOUND", `Unknown tool: ${toolId}`);
+    }
+    this.deps.onCatalogueChanged?.(tenantId, {
+      tools: true,
+      resources: false,
+      prompts: false,
+    });
   }
 
   async disconnect(tenantId: string, connectionId: string): Promise<void> {

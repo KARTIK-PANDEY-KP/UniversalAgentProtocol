@@ -249,6 +249,40 @@ describe("tool federation", () => {
     await client.close();
   });
 
+  it("says so when asked to toggle a tool that does not exist", async () => {
+    const gateway = await newGateway();
+    const server = await openMcpServer({ tools: [{ name: "keep" }] });
+    await gateway.createConnection(server.url, { alias: "up" });
+
+    // An UPDATE that matches no row is not a successful policy change, and
+    // reporting it as one lets a typo look like a working automation.
+    const response = await gateway.api("POST", "/api/v1/tools/tool_nonexistent", {
+      enabled: false,
+    });
+    expect(response.status).toBe(404);
+  });
+
+  it("tells a client that batched initialize with other work", async () => {
+    const gateway = await newGateway();
+    const response = await fetch(`${gateway.baseUrl}/mcp`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${gateway.apiKey}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify([
+        { jsonrpc: "2.0", id: 1, method: "initialize", params: {} },
+        { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} },
+      ]),
+    });
+
+    // Answering only the initialize would drop the second request without
+    // the client ever learning it was ignored.
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { error?: { message?: string } };
+    expect(body.error?.message).toContain("must be sent on its own");
+  });
+
   it("withholds an unreviewed destructive tool by default", async () => {
     const gateway = await newGateway();
     const server = await openMcpServer({

@@ -20,6 +20,12 @@ export interface GatewayConfig {
   encryptionKeyRing: string | null;
   logLevel: LogLevel;
   allowedOrigins: string[];
+  /**
+   * Origins a post-authorization `return_to` may point at. The gateway's own
+   * origin is always allowed; anything else has to be named here, or the
+   * redirect becomes a phishing hop out of a legitimate consent screen.
+   */
+  returnToOrigins: string[];
   apiKeys: ApiKeyPrincipal[];
   /** Relaxations required for local development and the conformance suite. */
   allowHttp: boolean;
@@ -101,6 +107,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): GatewayConfig 
     encryptionKeyRing: env["GATEWAY_ENCRYPTION_KEYS"] ?? null,
     logLevel: (env["LOG_LEVEL"] as LogLevel | undefined) ?? DEFAULTS.logLevel,
     allowedOrigins: parseList(env["GATEWAY_ALLOWED_ORIGINS"]),
+    returnToOrigins: parseList(env["GATEWAY_RETURN_TO_ORIGINS"]),
     apiKeys: parseApiKeys(env["GATEWAY_API_KEYS"]),
     allowHttp: parseBool(env["GATEWAY_ALLOW_HTTP_UPSTREAMS"], isLocal),
     allowLoopback: parseBool(env["GATEWAY_ALLOW_LOOPBACK_UPSTREAMS"], isLocal),

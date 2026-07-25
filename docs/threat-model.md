@@ -109,6 +109,19 @@ atomic conditional update, so an authorization code replayed by an attacker
 finds the transaction already consumed. State is indexed by hash, so database
 read access does not yield a usable state value.
 
+User binding applies whenever the callback carries a gateway credential. A
+browser completing the flow often carries none, in which case the transaction's
+own secrets are what protect it: the state is high-entropy, single-use and
+stored only as a hash, and the code is worthless without the PKCE verifier the
+gateway holds. An attacker who can read the redirect URL in flight can still
+complete a grant the victim started, which is the reason the flow is short
+lived and the reason `return_to` is restricted — see below.
+
+The `return_to` a caller may attach to an authorization is checked against the
+gateway's own origin plus `GATEWAY_RETURN_TO_ORIGINS`. Without that check a
+tenant user could route victims through a genuine consent screen and out to a
+page of their choosing, which is a far more convincing phish than a bare link.
+
 ### Multi-tenant isolation
 
 Every query that touches credentials, sessions, tools or connections is scoped

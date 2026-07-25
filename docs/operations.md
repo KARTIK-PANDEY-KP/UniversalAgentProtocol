@@ -35,6 +35,7 @@ All configuration is environment variables.
 | `GATEWAY_TOOL_CALLS_PER_MINUTE` | `600` | Tool calls a tenant may make per minute; `0` disables the limit |
 | `GATEWAY_API_REQUESTS_PER_MINUTE` | `300` | Control-plane requests a tenant may make per minute; `0` disables the limit |
 | `GATEWAY_ALLOWED_ORIGINS` | none | Origins permitted on the MCP endpoint |
+| `GATEWAY_RETURN_TO_ORIGINS` | none | Extra origins a post-authorization `return_to` may point at; the gateway's own origin is always allowed |
 | `GATEWAY_AUTHORIZATION_SERVERS` | none | Issuers that mint tokens for the gateway itself |
 | `GATEWAY_SCOPES_SUPPORTED` | `mcp` | Scopes advertised in the gateway's protected resource metadata |
 | `GATEWAY_ALLOW_HTTP_UPSTREAMS` | true when the base URL is HTTP | Permit `http://` upstreams |
