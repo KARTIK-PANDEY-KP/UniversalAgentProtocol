@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS tenants (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   status TEXT NOT NULL,
-  created_at INTEGER NOT NULL
+  created_at BIGINT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS users (
@@ -33,14 +33,14 @@ CREATE TABLE IF NOT EXISTS users (
   external_identity TEXT NOT NULL UNIQUE,
   email TEXT NOT NULL,
   status TEXT NOT NULL,
-  created_at INTEGER NOT NULL
+  created_at BIGINT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS tenant_memberships (
   tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   user_id TEXT NOT NULL,
   role TEXT NOT NULL,
-  created_at INTEGER NOT NULL,
+  created_at BIGINT NOT NULL,
   PRIMARY KEY (tenant_id, user_id)
 );
 
@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS mcp_servers (
   canonical_url TEXT NOT NULL,
   original_url TEXT NOT NULL,
   display_name TEXT NOT NULL,
-  authorization_required INTEGER NOT NULL,
+  authorization_required BIGINT NOT NULL,
   protected_resource_metadata_url TEXT,
   canonical_resource TEXT,
   selected_authorization_server TEXT,
@@ -59,8 +59,8 @@ CREATE TABLE IF NOT EXISTS mcp_servers (
   capabilities_json TEXT,
   metadata_json TEXT,
   status TEXT NOT NULL,
-  created_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL,
+  created_at BIGINT NOT NULL,
+  updated_at BIGINT NOT NULL,
   UNIQUE (tenant_id, canonical_url)
 );
 
@@ -73,9 +73,9 @@ CREATE TABLE IF NOT EXISTS oauth_issuers (
   revocation_endpoint TEXT,
   metadata_json TEXT NOT NULL,
   metadata_etag TEXT,
-  metadata_expires_at INTEGER NOT NULL,
-  supports_cimd INTEGER NOT NULL,
-  supports_dcr INTEGER NOT NULL,
+  metadata_expires_at BIGINT NOT NULL,
+  supports_cimd BIGINT NOT NULL,
+  supports_dcr BIGINT NOT NULL,
   supported_auth_methods TEXT NOT NULL,
   status TEXT NOT NULL
 );
@@ -91,8 +91,8 @@ CREATE TABLE IF NOT EXISTS oauth_client_registrations (
   redirect_uris TEXT NOT NULL,
   registration_access_token_encrypted TEXT,
   registration_client_uri TEXT,
-  issued_at INTEGER NOT NULL,
-  secret_expires_at INTEGER,
+  issued_at BIGINT NOT NULL,
+  secret_expires_at BIGINT,
   metadata_json TEXT NOT NULL,
   status TEXT NOT NULL
 );
@@ -114,17 +114,17 @@ CREATE TABLE IF NOT EXISTS upstream_connections (
   refresh_token_encrypted TEXT,
   static_headers_encrypted TEXT,
   token_type TEXT,
-  access_token_expires_at INTEGER,
-  refresh_token_expires_at INTEGER,
-  token_version INTEGER NOT NULL,
+  access_token_expires_at BIGINT,
+  refresh_token_expires_at BIGINT,
+  token_version BIGINT NOT NULL,
   dpop_key_reference TEXT,
   status TEXT NOT NULL,
-  last_refresh_at INTEGER,
-  last_success_at INTEGER,
+  last_refresh_at BIGINT,
+  last_success_at BIGINT,
   last_error_code TEXT,
   last_error_message_redacted TEXT,
-  created_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL,
+  created_at BIGINT NOT NULL,
+  updated_at BIGINT NOT NULL,
   UNIQUE (tenant_id, alias)
 );
 
@@ -139,8 +139,8 @@ CREATE TABLE IF NOT EXISTS oauth_transactions (
   redirect_uri TEXT NOT NULL,
   requested_scopes TEXT NOT NULL,
   resource TEXT,
-  expires_at INTEGER NOT NULL,
-  consumed_at INTEGER,
+  expires_at BIGINT NOT NULL,
+  consumed_at BIGINT,
   status TEXT NOT NULL,
   return_to TEXT
 );
@@ -156,10 +156,10 @@ CREATE TABLE IF NOT EXISTS discovered_tools (
   output_schema_json TEXT,
   annotations_json TEXT,
   schema_hash TEXT NOT NULL,
-  enabled INTEGER NOT NULL,
+  enabled BIGINT NOT NULL,
   risk_level TEXT NOT NULL,
-  discovered_at INTEGER NOT NULL,
-  last_seen_at INTEGER NOT NULL,
+  discovered_at BIGINT NOT NULL,
+  last_seen_at BIGINT NOT NULL,
   UNIQUE (connection_id, upstream_name)
 );
 CREATE INDEX IF NOT EXISTS idx_tools_tenant ON discovered_tools (tenant_id, gateway_name);
@@ -173,8 +173,8 @@ CREATE TABLE IF NOT EXISTS discovered_resources (
   name TEXT NOT NULL,
   description TEXT,
   mime_type TEXT,
-  is_template INTEGER NOT NULL,
-  last_seen_at INTEGER NOT NULL,
+  is_template BIGINT NOT NULL,
+  last_seen_at BIGINT NOT NULL,
   UNIQUE (connection_id, upstream_uri)
 );
 
@@ -186,7 +186,7 @@ CREATE TABLE IF NOT EXISTS discovered_prompts (
   gateway_name TEXT NOT NULL,
   description TEXT,
   arguments_json TEXT,
-  last_seen_at INTEGER NOT NULL,
+  last_seen_at BIGINT NOT NULL,
   UNIQUE (connection_id, upstream_name)
 );
 
@@ -197,8 +197,8 @@ CREATE TABLE IF NOT EXISTS downstream_mcp_sessions (
   client_label TEXT NOT NULL,
   protocol_version TEXT NOT NULL,
   capabilities_json TEXT NOT NULL,
-  created_at INTEGER NOT NULL,
-  last_seen_at INTEGER NOT NULL,
+  created_at BIGINT NOT NULL,
+  last_seen_at BIGINT NOT NULL,
   status TEXT NOT NULL
 );
 
@@ -210,8 +210,8 @@ CREATE TABLE IF NOT EXISTS upstream_mcp_sessions (
   protocol_version TEXT NOT NULL,
   capabilities_json TEXT NOT NULL,
   status TEXT NOT NULL,
-  created_at INTEGER NOT NULL,
-  last_seen_at INTEGER NOT NULL,
+  created_at BIGINT NOT NULL,
+  last_seen_at BIGINT NOT NULL,
   UNIQUE (connection_id, downstream_session_id)
 );
 
@@ -225,10 +225,10 @@ CREATE TABLE IF NOT EXISTS audit_events (
   operation TEXT NOT NULL,
   input_hash TEXT,
   result_status TEXT NOT NULL,
-  duration_ms INTEGER,
+  duration_ms BIGINT,
   provider_request_id TEXT,
   detail_json TEXT,
-  created_at INTEGER NOT NULL
+  created_at BIGINT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_audit_tenant ON audit_events (tenant_id, created_at);
 
@@ -242,7 +242,7 @@ CREATE TABLE IF NOT EXISTS preconfigured_oauth_clients (
   redirect_uri TEXT NOT NULL,
   token_endpoint_auth_method TEXT NOT NULL,
   scopes TEXT,
-  created_at INTEGER NOT NULL,
+  created_at BIGINT NOT NULL,
   UNIQUE (tenant_id, issuer)
 );
 
@@ -251,13 +251,13 @@ CREATE TABLE IF NOT EXISTS dpop_keys (
   tenant_id TEXT NOT NULL,
   private_key_encrypted TEXT NOT NULL,
   public_jwk_json TEXT NOT NULL,
-  created_at INTEGER NOT NULL
+  created_at BIGINT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS distributed_locks (
   key TEXT PRIMARY KEY,
   owner TEXT NOT NULL,
-  expires_at INTEGER NOT NULL
+  expires_at BIGINT NOT NULL
 );
 `;
 

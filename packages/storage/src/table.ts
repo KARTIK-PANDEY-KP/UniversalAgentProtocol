@@ -1,7 +1,6 @@
-import type { DatabaseSync } from "node:sqlite";
-
 import { GatewayError } from "@uap/core";
 
+import type { SqlDriver } from "./driver.js";
 import {
   fromRow,
   patchToRow,
@@ -28,23 +27,26 @@ function normalizeRow(row: Record<string, unknown>): Record<string, SqlValue> {
 }
 
 /**
- * Thin typed access layer over `node:sqlite`. All repositories share it so
+ * Thin typed access layer over a `SqlDriver`. All repositories share it so
  * that tenant scoping and JSON encoding are expressed once.
  */
 export class Table<T> {
   constructor(
-    private readonly db: DatabaseSync,
+    private readonly db: SqlDriver,
     private readonly table: string,
     private readonly mapper: Mapper<T>,
   ) {}
 
-  insert(entity: T): T {
+  async insert(entity: T): Promise<T> {
     const row = toRow(this.mapper, entity);
     const columns = Object.keys(row);
     const sql = `INSERT INTO ${this.table} (${columns.join(", ")}) VALUES (${columns
       .map(() => "?")
       .join(", ")})`;
-    this.db.prepare(sql).run(...columns.map((column) => row[column] ?? null));
+    await this.db.run(
+      sql,
+      columns.map((column) => row[column] ?? null),
+    );
     return entity;
   }
 
@@ -55,7 +57,7 @@ export class Table<T> {
    * key, so an upsert carrying a freshly minted id would orphan every one of
    * them, and a row created once was not created again.
    */
-  upsert(entity: T, conflictColumns: string[]): T {
+  async upsert(entity: T, conflictColumns: string[]): Promise<T> {
     const row = toRow(this.mapper, entity);
     const columns = Object.keys(row);
     const keys = new Set([...conflictColumns, "id", "created_at"]);
@@ -73,58 +75,50 @@ export class Table<T> {
       `VALUES (${columns.map(() => "?").join(", ")}) ` +
       `ON CONFLICT (${conflictColumns.join(", ")}) DO UPDATE SET ${updates} ` +
       `RETURNING *`;
-    const stored = this.db
-      .prepare(sql)
-      .get(...columns.map((column) => row[column] ?? null)) as Record<string, unknown>;
+    const rows = await this.db.all(
+      sql,
+      columns.map((column) => row[column] ?? null),
+    );
+    const stored = rows[0];
+    if (!stored) {
+      throw new GatewayError("INTERNAL", `Upsert into ${this.table} returned no row`);
+    }
     return fromRow(this.mapper, normalizeRow(stored));
   }
 
-  findOne(where: Where): T | null {
-    const rows = this.findMany(where, undefined, 1);
+  async findOne(where: Where): Promise<T | null> {
+    const rows = await this.findMany(where, undefined, 1);
     return rows[0] ?? null;
   }
 
-  findMany(where: Where = {}, orderBy?: string, limit?: number): T[] {
+  async findMany(where: Where = {}, orderBy?: string, limit?: number): Promise<T[]> {
     const { clause, values } = buildWhere(where);
     const sql =
       `SELECT * FROM ${this.table}${clause}` +
       (orderBy ? ` ORDER BY ${orderBy}` : "") +
       (limit === undefined ? "" : ` LIMIT ${limit}`);
-    const rows = this.db.prepare(sql).all(...values) as Record<string, unknown>[];
+    const rows = await this.db.all(sql, values);
     return rows.map((row) => fromRow(this.mapper, normalizeRow(row)));
   }
 
-  update(where: Where, patch: Partial<T>): number {
+  async update(where: Where, patch: Partial<T>): Promise<number> {
     const row = patchToRow(this.mapper, patch);
+    return this.updateRaw(where, row);
+  }
+
+  async updateRaw(where: Where, row: Record<string, SqlValue>): Promise<number> {
     const columns = Object.keys(row);
     if (columns.length === 0) return 0;
     const { clause, values } = buildWhere(where);
     const sql = `UPDATE ${this.table} SET ${columns
       .map((column) => `${column} = ?`)
       .join(", ")}${clause}`;
-    const result = this.db
-      .prepare(sql)
-      .run(...columns.map((column) => row[column] ?? null), ...values);
-    return Number(result.changes);
+    return this.db.run(sql, [...columns.map((column) => row[column] ?? null), ...values]);
   }
 
-  updateRaw(where: Where, row: Record<string, SqlValue>): number {
-    const columns = Object.keys(row);
-    if (columns.length === 0) return 0;
+  async delete(where: Where): Promise<number> {
     const { clause, values } = buildWhere(where);
-    const sql = `UPDATE ${this.table} SET ${columns
-      .map((column) => `${column} = ?`)
-      .join(", ")}${clause}`;
-    const result = this.db
-      .prepare(sql)
-      .run(...columns.map((column) => row[column] ?? null), ...values);
-    return Number(result.changes);
-  }
-
-  delete(where: Where): number {
-    const { clause, values } = buildWhere(where);
-    const result = this.db.prepare(`DELETE FROM ${this.table}${clause}`).run(...values);
-    return Number(result.changes);
+    return this.db.run(`DELETE FROM ${this.table}${clause}`, values);
   }
 
   column(field: keyof T): string {

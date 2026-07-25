@@ -54,7 +54,13 @@ import {
   SigningKeyStore,
   STRICT_SSRF_POLICY,
 } from "@uap/security";
-import { SqliteGatewayStore, type GatewayStore } from "@uap/storage";
+import {
+  PostgresDriver,
+  SqlGatewayStore,
+  SqliteDriver,
+  type GatewayStore,
+  type SqlDriver,
+} from "@uap/storage";
 
 import { loadConfig, type ApiKeyPrincipal, type GatewayConfig } from "./config.js";
 import { registerRoutes } from "./routes.js";
@@ -107,6 +113,7 @@ export interface GatewayServices {
 export class Gateway {
   readonly services: GatewayServices;
   private readonly router: Router;
+  private readonly ready: Promise<void>;
   private server: Server | null = null;
 
   constructor(options: GatewayOptions = {}) {
@@ -119,10 +126,7 @@ export class Gateway {
     });
     const metrics = new MetricsRegistry();
 
-    const store = new SqliteGatewayStore({
-      filename: config.databaseFile,
-      now: () => clock.now(),
-    });
+    const store = new SqlGatewayStore(driverFor(config), { now: () => clock.now() });
     const keyring = config.encryptionKeyRing
       ? LocalKeyring.fromSpec(config.encryptionKeyRing)
       : LocalKeyring.generate();
@@ -326,7 +330,17 @@ export class Gateway {
 
     this.router = new Router();
     registerRoutes(this.router, this.services, (req) => this.authenticate(req));
-    void this.ensurePrincipals();
+    this.ready = this.start();
+  }
+
+  /**
+   * Schema first, then the rows the configured API keys name. Everything that
+   * touches the database waits on this, because with a database on the far end
+   * of a socket the constructor cannot have finished the work itself.
+   */
+  private async start(): Promise<void> {
+    await this.services.store.init();
+    await this.ensurePrincipals();
   }
 
   get clientMetadataDocument(): ReturnType<typeof buildClientIdMetadataDocument> {
@@ -523,6 +537,9 @@ export class Gateway {
   }
 
   async listen(port?: number): Promise<number> {
+    // Accepting a request before the schema exists would answer it with an
+    // error about a missing table, so the port opens once the database is up.
+    await this.ready;
     const server = createServer((req, res) => {
       void this.handleRequest(req, res);
     });
@@ -548,8 +565,22 @@ export class Gateway {
         server.close(() => resolve());
       });
     }
-    this.services.store.close();
+    await this.services.store.close();
   }
+}
+
+/**
+ * A connection string means Postgres, its absence means a SQLite file. Both
+ * exist because the choice belongs to the deployment: one process on one
+ * machine is well served by a file, and a second replica is not served by one
+ * at all.
+ */
+function driverFor(config: GatewayConfig): SqlDriver {
+  if (!config.databaseUrl) return new SqliteDriver({ filename: config.databaseFile });
+  return new PostgresDriver({
+    connectionString: config.databaseUrl,
+    ...(config.databaseSchema ? { schema: config.databaseSchema } : {}),
+  });
 }
 
 /** Turns a verification failure into the challenge the client should see. */
