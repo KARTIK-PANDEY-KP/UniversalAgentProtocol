@@ -28,6 +28,8 @@ export interface GatewayConfig {
   gatewayAuthorizationServers: string[];
   gatewayScopesSupported: string[];
   requestTimeoutMs: number;
+  /** How long a pending upstream authorization stays valid. */
+  authorizationTransactionTtlMs: number;
   logoUri: string | null;
 }
 
@@ -38,6 +40,7 @@ const DEFAULTS = {
   databaseFile: ":memory:",
   logLevel: "info" as LogLevel,
   requestTimeoutMs: 60_000,
+  authorizationTransactionTtlMs: 600_000,
 };
 
 function parseList(value: string | undefined): string[] {
@@ -91,6 +94,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): GatewayConfig 
     gatewayAuthorizationServers: parseList(env["GATEWAY_AUTHORIZATION_SERVERS"]),
     gatewayScopesSupported: parseScopes(env["GATEWAY_SCOPES_SUPPORTED"] ?? "mcp"),
     requestTimeoutMs: Number(env["GATEWAY_REQUEST_TIMEOUT_MS"] ?? DEFAULTS.requestTimeoutMs),
+    authorizationTransactionTtlMs: Number(
+      env["GATEWAY_AUTHORIZATION_TTL_MS"] ?? DEFAULTS.authorizationTransactionTtlMs,
+    ),
     logoUri: env["GATEWAY_LOGO_URI"] ?? null,
   };
 }

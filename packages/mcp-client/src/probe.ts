@@ -69,6 +69,9 @@ export async function probeMcpEndpoint(options: ProbeOptions): Promise<ProbeResu
         if (error.wwwAuthenticate) result.wwwAuthenticate = error.wwwAuthenticate;
         return result;
       }
+      // A refusal by network policy is a decision, not a failed attempt:
+      // retrying on the other transport would only repeat it.
+      if (error instanceof GatewayError && error.code === "SSRF_BLOCKED") throw error;
       lastError = error;
     }
   }

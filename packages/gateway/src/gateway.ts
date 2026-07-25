@@ -159,7 +159,11 @@ export class Gateway {
       clock,
       logger,
       metrics,
-      config: { ...DEFAULT_TOKEN_MANAGER_CONFIG, identity },
+      config: {
+        ...DEFAULT_TOKEN_MANAGER_CONFIG,
+        identity,
+        transactionTtlMs: config.authorizationTransactionTtlMs,
+      },
     });
 
     const policy = new PolicyEngine({ ...DEFAULT_TOOL_POLICY, ...(options.policy ?? {}) });

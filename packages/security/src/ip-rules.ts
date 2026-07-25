@@ -124,3 +124,16 @@ export function classifyAddress(address: string): IpDisposition {
   if (family === 6) return classifyIpv6(address);
   return "RESERVED";
 }
+
+/**
+ * Returns the bare address when a URL host is an IP literal rather than a
+ * name. Node connects straight to a literal without consulting the `lookup`
+ * hook, so a literal has to be judged before the request is made.
+ */
+export function literalAddressOf(hostname: string): string | null {
+  const bare =
+    hostname.startsWith("[") && hostname.endsWith("]")
+      ? hostname.slice(1, -1)
+      : hostname;
+  return isIP(bare) === 0 ? null : bare;
+}

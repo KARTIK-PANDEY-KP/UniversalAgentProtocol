@@ -54,10 +54,12 @@ export function isSecretKey(key: string): boolean {
 export function redactString(value: string): string {
   let output = value;
   for (const pattern of VALUE_PATTERNS) {
-    output = output.replace(pattern, (match, capture: string | undefined) =>
-      capture === undefined
-        ? REDACTED
-        : match.replace(capture, REDACTED),
+    // A pattern without a capture group replaces the whole match; one with a
+    // group keeps the surrounding text so the log still says which parameter
+    // was present. The second replacer argument is the offset rather than a
+    // group when the pattern captures nothing, hence the type check.
+    output = output.replace(pattern, (match, capture: unknown) =>
+      typeof capture === "string" ? match.replace(capture, REDACTED) : REDACTED,
     );
   }
   return output;

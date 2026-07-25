@@ -7,7 +7,7 @@ import type { Readable } from "node:stream";
 import { GatewayError, clampText } from "@umg/core";
 import { Metric, type MetricsRegistry } from "@umg/observability";
 
-import { classifyAddress, type IpDisposition } from "./ip-rules.js";
+import { classifyAddress, literalAddressOf, type IpDisposition } from "./ip-rules.js";
 import { parseAbsoluteUrl } from "./url.js";
 
 export interface SsrfPolicy {
@@ -198,6 +198,17 @@ export class SafeFetcher {
       throw new GatewayError("SSRF_BLOCKED", `Host is not allowlisted: ${host}`);
     }
 
+    // Node connects directly when the host is an IP literal and never calls
+    // the lookup hook, so the literal has to be judged here instead.
+    const literal = literalAddressOf(host);
+    if (literal !== null && !this.addressPermitted(literal, host)) {
+      this.blocked("blocked_address");
+      throw new GatewayError(
+        "SSRF_BLOCKED",
+        `Refusing to connect to ${host}: the address is not publicly routable`,
+      );
+    }
+
     const maxBytes = options.maxResponseBytes ?? this.policy.maxResponseBytes;
     const timeoutMs = options.timeoutMs ?? this.policy.timeoutMs;
     const transport = url.protocol === "https:" ? httpsRequest : httpRequest;
@@ -255,10 +266,21 @@ export class SafeFetcher {
     });
   }
 
+  /**
+   * An operator allowlist entry opts a host out of the routability rules, but
+   * never out of the cloud metadata block: that address is never a legitimate
+   * MCP endpoint and reaching it discloses the deployment's own credentials.
+   */
+  private addressPermitted(address: string, host: string): boolean {
+    const disposition = classifyAddress(address);
+    if (this.policy.allowedHosts.includes(host)) {
+      return disposition !== "CLOUD_METADATA";
+    }
+    return dispositionAllowed(disposition, this.policy);
+  }
+
   private guardedLookup(host: string): LookupFunction {
-    const policy = this.policy;
     const metrics = this.metrics;
-    const explicitlyAllowed = policy.allowedHosts.includes(host);
     return ((hostname, lookupOptions, callback) => {
       dnsLookup(hostname, { ...(lookupOptions as object), all: true }, (error, addresses) => {
         if (error) {
@@ -266,11 +288,9 @@ export class SafeFetcher {
           return;
         }
         const resolved = addresses as { address: string; family: number }[];
-        const permitted = resolved.filter((entry) => {
-          const disposition = classifyAddress(entry.address);
-          if (explicitlyAllowed && disposition !== "CLOUD_METADATA") return true;
-          return dispositionAllowed(disposition, policy);
-        });
+        const permitted = resolved.filter((entry) =>
+          this.addressPermitted(entry.address, host),
+        );
         if (permitted.length === 0) {
           metrics?.counter(Metric.SsrfRequestBlocked, { reason: "blocked_address" });
           callback(
