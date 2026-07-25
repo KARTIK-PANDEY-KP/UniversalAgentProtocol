@@ -20,6 +20,7 @@ export interface DownstreamSessionHandle {
   readonly tenantId: string;
   readonly userId: string;
   readonly clientLabel: string;
+  readonly roles: string[];
   readonly protocolVersion: string;
   readonly capabilities: McpClientCapabilities;
   /** Pushes a notification to the client's event stream when one is open. */
@@ -58,6 +59,7 @@ export class DownstreamSession implements DownstreamSessionHandle {
     readonly tenantId: string,
     readonly userId: string,
     readonly clientLabel: string,
+    readonly roles: string[],
     protocolVersion: string,
     now: number,
     id?: string,

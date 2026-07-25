@@ -51,6 +51,17 @@ export interface User {
   createdAt: number;
 }
 
+/**
+ * A user's role within a tenant. Roles gate which tools they may call; see
+ * `ToolPolicy.writeRoles`.
+ */
+export interface TenantMembership {
+  tenantId: string;
+  userId: string;
+  role: string;
+  createdAt: number;
+}
+
 export interface McpServerRecord {
   id: string;
   tenantId: string;
@@ -113,6 +124,12 @@ export interface UpstreamConnection {
   oauthClientRegistrationId: string | null;
   alias: string;
   grantedScopes: string[];
+  /**
+   * Scopes to ask for on the next authorization. Starts as what the upstream
+   * advertised and grows when a tool call fails with `insufficient_scope`, so
+   * reconnecting widens the grant instead of repeating the same narrow request.
+   */
+  requestedScopes: string[];
   accessTokenEncrypted: string | null;
   refreshTokenEncrypted: string | null;
   /**

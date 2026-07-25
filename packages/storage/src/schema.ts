@@ -10,6 +10,7 @@ import type {
   OAuthTransaction,
   PreconfiguredOAuthClient,
   Tenant,
+  TenantMembership,
   UpstreamConnection,
   UpstreamSessionRecord,
   User,
@@ -32,6 +33,14 @@ CREATE TABLE IF NOT EXISTS users (
   email TEXT NOT NULL,
   status TEXT NOT NULL,
   created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS tenant_memberships (
+  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL,
+  role TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (tenant_id, user_id)
 );
 
 CREATE TABLE IF NOT EXISTS mcp_servers (
@@ -99,6 +108,7 @@ CREATE TABLE IF NOT EXISTS upstream_connections (
   oauth_client_registration_id TEXT,
   alias TEXT NOT NULL,
   granted_scopes TEXT NOT NULL,
+  requested_scopes TEXT NOT NULL DEFAULT '[]',
   access_token_encrypted TEXT,
   refresh_token_encrypted TEXT,
   static_headers_encrypted TEXT,
@@ -258,6 +268,13 @@ export const userMapper: Mapper<User> = {
   createdAt: num("created_at"),
 };
 
+export const membershipMapper: Mapper<TenantMembership> = {
+  tenantId: text("tenant_id"),
+  userId: text("user_id"),
+  role: text("role"),
+  createdAt: num("created_at"),
+};
+
 export const mcpServerMapper: Mapper<McpServerRecord> = {
   id: text("id"),
   tenantId: text("tenant_id"),
@@ -320,6 +337,7 @@ export const connectionMapper: Mapper<UpstreamConnection> = {
   oauthClientRegistrationId: textNull("oauth_client_registration_id"),
   alias: text("alias"),
   grantedScopes: jsonArray("granted_scopes"),
+  requestedScopes: jsonArray("requested_scopes"),
   accessTokenEncrypted: textNull("access_token_encrypted"),
   refreshTokenEncrypted: textNull("refresh_token_encrypted"),
   staticHeadersEncrypted: textNull("static_headers_encrypted"),

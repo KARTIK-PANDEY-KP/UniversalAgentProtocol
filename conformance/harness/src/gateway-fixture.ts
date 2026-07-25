@@ -8,6 +8,8 @@ export interface GatewayFixtureOptions {
   apiKey?: string;
   tenantId?: string;
   userId?: string;
+  /** Workspace role of the default principal. */
+  role?: string;
   config?: Partial<GatewayConfig>;
   /** Collects log records so a test can assert nothing sensitive was written. */
   captureLogs?: boolean;
@@ -82,6 +84,7 @@ export class GatewayFixture {
             tenantId: this.tenantId,
             userId: this.userId,
             label: "conformance",
+            role: this.options.role ?? "member",
           },
         ],
         gatewayAuthorizationServers: [],
@@ -104,13 +107,16 @@ export class GatewayFixture {
     tenantId: string;
     userId: string;
     label?: string;
+    role?: string;
   }): Promise<void> {
     const { store, clock, config } = this.services;
+    const role = principal.role ?? "member";
     config.apiKeys.push({
       key: principal.key,
       tenantId: principal.tenantId,
       userId: principal.userId,
       label: principal.label ?? "conformance",
+      role,
     });
     await store.tenants
       .create({
@@ -127,6 +133,14 @@ export class GatewayFixture {
         externalIdentity: `${principal.tenantId}:${principal.userId}`,
         email: `${principal.userId}@example.invalid`,
         status: "ACTIVE",
+        createdAt: clock.now(),
+      })
+      .catch(() => undefined);
+    await store.memberships
+      .upsert({
+        tenantId: principal.tenantId,
+        userId: principal.userId,
+        role,
         createdAt: clock.now(),
       })
       .catch(() => undefined);

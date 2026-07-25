@@ -372,6 +372,43 @@ describe("tool federation", () => {
     await colleague.close();
   });
 
+  it("lets a read-only member list a write tool but not call it", async () => {
+    // A workspace where only maintainers may change anything.
+    const gateway = await newGateway({
+      role: "maintainer",
+      config: { writeRoles: ["maintainer"] },
+    });
+    await gateway.addPrincipal({
+      key: "reader-key",
+      tenantId: gateway.tenantId,
+      userId: "user_reader",
+      role: "reader",
+    });
+    const server = await openMcpServer({
+      tools: [{ name: "read_file" }, { name: "write_file" }],
+    });
+    await gateway.createConnection(server.url, { alias: "up", owner_type: "WORKSPACE" });
+
+    const reader = new GatewayMcpClient({ baseUrl: gateway.baseUrl, apiKey: "reader-key" });
+    await reader.initialize();
+    expect((await reader.listTools()).map((tool) => tool.name).sort()).toEqual([
+      "up.read_file",
+      "up.write_file",
+    ]);
+    expect(await reader.callTool("up.read_file")).toBeDefined();
+    await expect(reader.callTool("up.write_file")).rejects.toThrow(/read-only tools/u);
+    await reader.close();
+
+    // The same call from a maintainer goes through.
+    const maintainer = new GatewayMcpClient({
+      baseUrl: gateway.baseUrl,
+      apiKey: gateway.apiKey,
+    });
+    await maintainer.initialize();
+    expect(await maintainer.callTool("up.write_file")).toBeDefined();
+    await maintainer.close();
+  });
+
   it("blocks a client in another tenant from reaching a connection", async () => {
     const gateway = await newGateway();
     await gateway.addPrincipal({

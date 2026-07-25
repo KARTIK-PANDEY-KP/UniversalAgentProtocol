@@ -41,6 +41,8 @@ export interface NorthboundPrincipal {
   tenantId: string;
   userId: string;
   clientLabel: string;
+  /** Workspace roles, which decide which tools the caller may invoke. */
+  roles: string[];
 }
 
 export type NorthboundAuthenticator = (
@@ -346,6 +348,7 @@ export class NorthboundMcpServer {
       params.clientInfo?.name
         ? `${params.clientInfo.name}/${params.clientInfo.version}`
         : principal.clientLabel,
+      principal.roles,
       protocolVersion,
       this.options.clock.now(),
     );

@@ -164,6 +164,7 @@ export class ConnectionService {
       oauthClientRegistrationId: null,
       alias,
       grantedScopes: [],
+      requestedScopes: [],
       accessTokenEncrypted: null,
       refreshTokenEncrypted: null,
       staticHeadersEncrypted: input.staticHeaders
@@ -296,6 +297,8 @@ export class ConnectionService {
     const scopes = uniqueStrings([
       ...(challenge?.params["scope"]?.split(" ") ?? []),
       ...(resourceDiscovery.metadata.scopes_supported ?? []),
+      // Carries forward anything a previous call found the grant too narrow for.
+      ...connection.requestedScopes,
     ]).filter((scope) => scope.length > 0);
 
     const registration = await this.deps.registrations

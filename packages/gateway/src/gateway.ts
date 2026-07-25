@@ -166,7 +166,11 @@ export class Gateway {
       },
     });
 
-    const policy = new PolicyEngine({ ...DEFAULT_TOOL_POLICY, ...(options.policy ?? {}) });
+    const policy = new PolicyEngine({
+      ...DEFAULT_TOOL_POLICY,
+      writeRoles: config.writeRoles,
+      ...(options.policy ?? {}),
+    });
     const audit = new AuditService(store, clock, logger);
 
     // The session manager and the MCP handler reference each other: upstream
@@ -219,6 +223,7 @@ export class Gateway {
     const handler = new GatewayMcpHandler({
       store,
       sessions: upstreamSessions,
+      tokenManager,
       policy,
       audit,
       clock,
@@ -302,6 +307,14 @@ export class Gateway {
           })
           .catch(() => undefined);
       }
+      await store.memberships
+        .upsert({
+          tenantId: principal.tenantId,
+          userId: principal.userId,
+          role: principal.role,
+          createdAt: clock.now(),
+        })
+        .catch(() => undefined);
     }
   }
 
@@ -317,10 +330,17 @@ export class Gateway {
       constantTimeEquals(candidate.key, presented),
     );
     if (!match) return null;
+    // The membership is the authority, so a role changed in the database takes
+    // effect without restarting the process.
+    const membership = await this.services.store.memberships.get(
+      match.tenantId,
+      match.userId,
+    );
     return {
       tenantId: match.tenantId,
       userId: match.userId,
       clientLabel: match.label,
+      roles: [membership?.role ?? match.role],
     };
   }
 

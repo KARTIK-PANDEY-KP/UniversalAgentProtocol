@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   GatewayFixture,
+  GatewayMcpClient,
+  completeAuthorization,
   connectUpstream,
   startProtectedUpstream,
   type ProtectedUpstream,
@@ -185,6 +187,52 @@ describe("OAuth client registration", () => {
     expect(record.grantedScopes).toEqual(["mcp:read"]);
   });
 
+  it("widens the grant when one tool needs a scope the token does not carry", async () => {
+    // The upstream only advertises read, so that is all the first grant covers.
+    const upstream = await startProtectedUpstream({
+      authorizationServer: { supportsDcr: true },
+      scopesSupported: ["mcp:read"],
+      mcpServer: {
+        tools: [{ name: "read_doc" }, { name: "edit_doc", requiredScope: "mcp:write" }],
+      },
+    });
+    started.push(upstream);
+    const gateway = new GatewayFixture();
+    await gateway.start();
+    started.push(gateway);
+
+    const { connection } = await connectUpstream(gateway, upstream.url, { alias: "docs" });
+    expect(connection.status).toBe("CONNECTED");
+
+    const client = new GatewayMcpClient({
+      baseUrl: gateway.baseUrl,
+      apiKey: gateway.apiKey,
+    });
+    await client.initialize();
+    expect(await client.callTool("docs.read_doc")).toBeDefined();
+
+    // The write tool is refused, and the refusal is a reconnect prompt rather
+    // than an opaque failure.
+    await expect(client.callTool("docs.edit_doc")).rejects.toThrow(/additional scopes/iu);
+
+    const after = await connectionRecord(gateway, connection.connection_id);
+    expect(after.status).toBe("REAUTH_REQUIRED");
+    expect([...after.requestedScopes].sort()).toEqual(["mcp:read", "mcp:write"]);
+    // The grant was never touched; only a wider one was asked for.
+    expect(after.grantedScopes).toEqual(["mcp:read"]);
+
+    // Reconnecting asks for the wider set, and the same tool now works.
+    await completeAuthorization(await gateway.authorizeUrl(connection.connection_id), {
+      gatewayApiKey: gateway.apiKey,
+      gatewayBaseUrl: gateway.baseUrl,
+    });
+    const widened = await connectionRecord(gateway, connection.connection_id);
+    expect(widened.status).toBe("CONNECTED");
+    expect([...widened.grantedScopes].sort()).toEqual(["mcp:read", "mcp:write"]);
+    expect(await client.callTool("docs.edit_doc")).toBeDefined();
+    await client.close();
+  });
+
   it("discovers metadata published at the OpenID Connect location", async () => {
     const { gateway, upstream } = await scenario({
       supportsDcr: true,
@@ -218,7 +266,7 @@ async function registrationOf(gateway: GatewayFixture): Promise<{
 async function connectionRecord(
   gateway: GatewayFixture,
   connectionId: string,
-): Promise<{ grantedScopes: string[]; status: string }> {
+): Promise<{ grantedScopes: string[]; requestedScopes: string[]; status: string }> {
   const record = await gateway.services.store.connections.get(
     gateway.tenantId,
     connectionId,

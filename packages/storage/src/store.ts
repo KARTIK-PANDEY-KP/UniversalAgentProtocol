@@ -11,6 +11,7 @@ import type {
   OAuthTransaction,
   PreconfiguredOAuthClient,
   Tenant,
+  TenantMembership,
   UpstreamConnection,
   UpstreamSessionRecord,
   User,
@@ -47,6 +48,12 @@ export interface UserRepository {
   create(user: User): Promise<User>;
   get(tenantId: string, id: string): Promise<User | null>;
   findByExternalIdentity(identity: string): Promise<User | null>;
+}
+
+export interface MembershipRepository {
+  upsert(membership: TenantMembership): Promise<TenantMembership>;
+  get(tenantId: string, userId: string): Promise<TenantMembership | null>;
+  listByTenant(tenantId: string): Promise<TenantMembership[]>;
 }
 
 export interface McpServerRepository {
@@ -193,6 +200,7 @@ export interface PreconfiguredClientRepository {
 export interface GatewayStore {
   readonly tenants: TenantRepository;
   readonly users: UserRepository;
+  readonly memberships: MembershipRepository;
   readonly mcpServers: McpServerRepository;
   readonly issuers: OAuthIssuerRepository;
   readonly registrations: ClientRegistrationRepository;

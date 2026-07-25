@@ -16,6 +16,7 @@ import {
   type OAuthTransaction,
   type PreconfiguredOAuthClient,
   type Tenant,
+  type TenantMembership,
   type UpstreamConnection,
   type UpstreamSessionRecord,
   type User,
@@ -29,6 +30,7 @@ import {
   downstreamSessionMapper,
   issuerMapper,
   mcpServerMapper,
+  membershipMapper,
   preconfiguredClientMapper,
   promptMapper,
   registrationMapper,
@@ -47,6 +49,7 @@ import type {
   DownstreamSessionRepository,
   GatewayStore,
   McpServerRepository,
+  MembershipRepository,
   OAuthIssuerRepository,
   PreconfiguredClientRepository,
   PromptRepository,
@@ -133,6 +136,7 @@ export class SqliteGatewayStore implements GatewayStore {
 
   readonly tenants: TenantRepository;
   readonly users: UserRepository;
+  readonly memberships: MembershipRepository;
   readonly mcpServers: McpServerRepository;
   readonly issuers: OAuthIssuerRepository;
   readonly registrations: ClientRegistrationRepository;
@@ -156,6 +160,11 @@ export class SqliteGatewayStore implements GatewayStore {
 
     const tenantTable = new Table<Tenant>(this.db, "tenants", tenantMapper);
     const userTable = new Table<User>(this.db, "users", userMapper);
+    const membershipTable = new Table<TenantMembership>(
+      this.db,
+      "tenant_memberships",
+      membershipMapper,
+    );
     const serverTable = new Table<McpServerRecord>(this.db, "mcp_servers", mcpServerMapper);
     const issuerTable = new Table<OAuthIssuerRecord>(this.db, "oauth_issuers", issuerMapper);
     const registrationTable = new Table<OAuthClientRegistrationRecord>(
@@ -214,6 +223,25 @@ export class SqliteGatewayStore implements GatewayStore {
       get: async (tenantId, id) => userTable.findOne({ id, tenant_id: tenantId }),
       findByExternalIdentity: async (identity) =>
         userTable.findOne({ external_identity: identity }),
+    };
+
+    this.memberships = {
+      upsert: async (membership) => {
+        const existing = membershipTable.findOne({
+          tenant_id: membership.tenantId,
+          user_id: membership.userId,
+        });
+        if (!existing) return membershipTable.insert(membership);
+        membershipTable.update(
+          { tenant_id: membership.tenantId, user_id: membership.userId },
+          { role: membership.role },
+        );
+        return { ...existing, role: membership.role };
+      },
+      get: async (tenantId, userId) =>
+        membershipTable.findOne({ tenant_id: tenantId, user_id: userId }),
+      listByTenant: async (tenantId) =>
+        membershipTable.findMany({ tenant_id: tenantId }, "created_at"),
     };
 
     this.mcpServers = {

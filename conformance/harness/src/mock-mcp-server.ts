@@ -38,6 +38,12 @@ export interface MockToolDefinition {
   annotations?: JsonObject;
   /** Rejects the call with `insufficient_scope` unless the token has it. */
   requiredScope?: string;
+  /**
+   * How the refusal is shaped. `challenge` is the RFC 6750 form, a 403 with
+   * `WWW-Authenticate`; `jsonrpc` is the shortcut some servers take of failing
+   * the call and naming the error in the message.
+   */
+  scopeErrorStyle?: "challenge" | "jsonrpc";
   handler?(args: JsonObject, hooks: ToolCallHooks): Promise<McpToolResult> | McpToolResult;
 }
 
@@ -259,6 +265,33 @@ export class MockMcpServer {
     return introspection.active ? introspection : null;
   }
 
+  /** The scope a batch of requests needs but the token does not carry. */
+  private scopeViolation(
+    requests: JsonRpcRequest[],
+    introspection: TokenIntrospection,
+  ): string | null {
+    for (const request of requests) {
+      if (request.method !== McpMethod.ToolsCall) continue;
+      const name = String((request.params ?? {})["name"] ?? "");
+      const tool = this.tools.find((candidate) => candidate.name === name);
+      if (!tool || (tool.scopeErrorStyle ?? "challenge") !== "challenge") continue;
+      const missing = missingScope(tool, introspection);
+      if (missing) return missing;
+    }
+    return null;
+  }
+
+  private sendScopeChallenge(res: ServerResponse, scope: string): void {
+    json(
+      res,
+      403,
+      { error: "insufficient_scope" },
+      {
+        "www-authenticate": `Bearer error="insufficient_scope", scope="${scope}"`,
+      },
+    );
+  }
+
   private sendChallenge(res: ServerResponse): void {
     const parts = ['Bearer error="invalid_token"'];
     if (this.options.advertiseResourceMetadata !== false) {
@@ -343,6 +376,14 @@ export class MockMcpServer {
     if (requests.length === 0) {
       res.writeHead(202, { "content-length": 0 });
       res.end();
+      return;
+    }
+
+    // A resource server refuses a too-narrow token before doing any work, so
+    // this is checked ahead of deciding whether to stream the response.
+    const underscoped = this.scopeViolation(requests, introspection);
+    if (underscoped) {
+      this.sendScopeChallenge(res, underscoped);
       return;
     }
 
@@ -534,11 +575,12 @@ export class MockMcpServer {
     if (!tool) {
       return failure(request.id, JsonRpcErrorCode.InvalidParams, `Unknown tool: ${name}`);
     }
-    if (tool.requiredScope && !introspection.scopes.includes(tool.requiredScope)) {
+    const missing = missingScope(tool, introspection);
+    if (missing) {
       return failure(
         request.id,
         JsonRpcErrorCode.InvalidRequest,
-        `insufficient_scope: ${tool.requiredScope}`,
+        `insufficient_scope: ${missing}`,
       );
     }
 
@@ -599,6 +641,14 @@ export class MockMcpServer {
       );
     }
   }
+}
+
+function missingScope(
+  tool: MockToolDefinition,
+  introspection: TokenIntrospection,
+): string | null {
+  if (!tool.requiredScope) return null;
+  return introspection.scopes.includes(tool.requiredScope) ? null : tool.requiredScope;
 }
 
 function isRequest(value: unknown): value is JsonRpcRequest {

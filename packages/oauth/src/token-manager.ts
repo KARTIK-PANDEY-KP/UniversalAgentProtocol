@@ -369,6 +369,9 @@ export class OAuthTokenManager {
     const connection = await this.requireConnection(ref);
     await this.deps.store.connections.update(connection.id, {
       status: "REAUTH_REQUIRED",
+      // Remembered so the next authorization asks for the wider grant rather
+      // than repeating the request that was just refused.
+      requestedScopes: uniqueStrings([...connection.requestedScopes, ...requiredScopes]),
       lastErrorCode: "insufficient_scope",
       lastErrorMessageRedacted: `Additional scopes required: ${requiredScopes.join(" ")}`,
     });

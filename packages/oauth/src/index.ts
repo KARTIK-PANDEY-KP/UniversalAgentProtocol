@@ -1,4 +1,5 @@
 export * from "./www-authenticate.js";
+export * from "./insufficient-scope.js";
 export * from "./pkce.js";
 export * from "./protocol-error.js";
 export * from "./discovery.js";

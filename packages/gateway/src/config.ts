@@ -7,6 +7,8 @@ export interface ApiKeyPrincipal {
   tenantId: string;
   userId: string;
   label: string;
+  /** Workspace role recorded for this principal; see `writeRoles`. */
+  role: string;
 }
 
 export interface GatewayConfig {
@@ -27,6 +29,8 @@ export interface GatewayConfig {
   /** Authorization servers that issue tokens for the gateway itself. */
   gatewayAuthorizationServers: string[];
   gatewayScopesSupported: string[];
+  /** Roles allowed to call anything other than a read-only tool; empty allows all. */
+  writeRoles: string[];
   requestTimeoutMs: number;
   /** How long a pending upstream authorization stays valid. */
   authorizationTransactionTtlMs: number;
@@ -58,14 +62,14 @@ function parseBool(value: string | undefined, fallback: boolean): boolean {
   return ["1", "true", "yes", "on"].includes(value.toLowerCase());
 }
 
-/** `key:tenant:user[:label]` entries separated by commas. */
+/** `key:tenant:user[:label[:role]]` entries separated by commas. */
 export function parseApiKeys(value: string | undefined): ApiKeyPrincipal[] {
   return parseList(value).map((entry) => {
     const parts = entry.split(":");
     if (parts.length < 3) {
       throw new GatewayError(
         "INVALID_REQUEST",
-        "GATEWAY_API_KEYS entries must look like key:tenantId:userId[:label]",
+        "GATEWAY_API_KEYS entries must look like key:tenantId:userId[:label[:role]]",
       );
     }
     return {
@@ -73,6 +77,7 @@ export function parseApiKeys(value: string | undefined): ApiKeyPrincipal[] {
       tenantId: parts[1] ?? "",
       userId: parts[2] ?? "",
       label: parts[3] ?? "gateway-client",
+      role: parts[4] ?? "member",
     };
   });
 }
@@ -95,6 +100,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): GatewayConfig 
     hostAllowlist: parseList(env["GATEWAY_UPSTREAM_HOST_ALLOWLIST"]),
     gatewayAuthorizationServers: parseList(env["GATEWAY_AUTHORIZATION_SERVERS"]),
     gatewayScopesSupported: parseScopes(env["GATEWAY_SCOPES_SUPPORTED"] ?? "mcp"),
+    writeRoles: parseList(env["GATEWAY_WRITE_ROLES"]),
     requestTimeoutMs: Number(env["GATEWAY_REQUEST_TIMEOUT_MS"] ?? DEFAULTS.requestTimeoutMs),
     authorizationTransactionTtlMs: Number(
       env["GATEWAY_AUTHORIZATION_TTL_MS"] ?? DEFAULTS.authorizationTransactionTtlMs,

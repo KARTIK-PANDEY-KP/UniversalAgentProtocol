@@ -25,6 +25,7 @@ import type {
   McpServerHandler,
   RequestContext,
 } from "@umg/mcp-server";
+import { insufficientScopeFrom, type OAuthTokenManager } from "@umg/oauth";
 import { Metric, type Logger, type MetricsRegistry } from "@umg/observability";
 import type { GatewayStore } from "@umg/storage";
 
@@ -36,6 +37,7 @@ import type { UpstreamMessageContext, UpstreamSessionManager } from "./upstream-
 export interface GatewayHandlerDeps {
   store: GatewayStore;
   sessions: UpstreamSessionManager;
+  tokenManager: OAuthTokenManager;
   policy: PolicyEngine;
   audit: AuditService;
   clock: Clock;
@@ -47,7 +49,6 @@ export interface GatewayHandlerDeps {
   lookupSession(sessionId: string): DownstreamSessionHandle | undefined;
   /** All live sessions for a tenant, used for list-changed fan-out. */
   sessionsForTenant(tenantId: string): DownstreamSessionHandle[];
-  rolesForUser?(tenantId: string, userId: string): string[];
 }
 
 /**
@@ -294,7 +295,7 @@ export class GatewayMcpHandler implements McpServerHandler {
       tool,
       connection,
       args,
-      roles: this.deps.rolesForUser?.(session.tenantId, session.userId) ?? [],
+      roles: session.roles,
     });
     if (decision.outcome === "DENY") {
       await this.audit(session, tool, connection, "tools/call", args, "DENIED", started, {
@@ -360,6 +361,16 @@ export class GatewayMcpHandler implements McpServerHandler {
         started,
         { error: (error as Error).message },
       );
+      // A token that authorized the connection can still be too narrow for one
+      // tool. That is not a broken grant, it is a grant that has to be widened,
+      // so the user gets a reconnect link rather than an opaque failure.
+      const required = insufficientScopeFrom(error);
+      if (required !== null) {
+        await this.deps.tokenManager.requireIncrementalAuthorization(
+          { tenantId: connection.tenantId, connectionId: connection.id },
+          [...new Set([...connection.grantedScopes, ...required])],
+        );
+      }
       throw error;
     } finally {
       if (progressToken !== undefined) {
