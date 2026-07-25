@@ -6,6 +6,7 @@
   "dependencies": {
     "@umg/conformance": "workspace:*",
     "@umg/core": "workspace:*",
+    "@umg/federation": "workspace:*",
     "@umg/gateway": "workspace:*"
   }
 }

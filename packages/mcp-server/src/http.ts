@@ -54,7 +54,12 @@ export function openEventStream(
     connection: "keep-alive",
     ...headers,
   });
-  return new EventStreamWriter(res);
+  const writer = new EventStreamWriter(res);
+  // Node buffers the response head until something is written. Send a comment
+  // straight away so the client observes an open stream instead of waiting for
+  // the first real message.
+  writer.comment("open");
+  return writer;
 }
 
 export class EventStreamWriter {

@@ -56,6 +56,9 @@ importers:
       '@umg/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@umg/federation':
+        specifier: workspace:*
+        version: link:../../packages/federation
       '@umg/gateway':
         specifier: workspace:*
         version: link:../../packages/gateway

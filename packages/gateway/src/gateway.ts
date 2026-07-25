@@ -369,10 +369,14 @@ export class Gateway {
     await this.services.northbound.closeAll();
     await this.services.upstreamSessions.closeAll();
     if (this.server) {
-      await new Promise<void>((resolve) => {
-        this.server?.close(() => resolve());
-      });
+      const server = this.server;
       this.server = null;
+      // Event streams hold keep-alive sockets open; drop them so shutdown does
+      // not wait for idle clients to disconnect on their own.
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => {
+        server.close(() => resolve());
+      });
     }
     this.services.store.close();
   }

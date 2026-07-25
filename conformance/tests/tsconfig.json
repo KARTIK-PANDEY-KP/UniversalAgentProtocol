@@ -10,6 +10,7 @@
   "references": [
     { "path": "../harness" },
     { "path": "../../packages/core" },
+    { "path": "../../packages/federation" },
     { "path": "../../packages/gateway" }
   ]
 }

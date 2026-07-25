@@ -348,7 +348,40 @@ export class ConnectionService {
     connectionId: string,
   ): Promise<ToolSyncResult> {
     const connection = await this.requireConnection(tenantId, connectionId);
+    await this.detectTransport(connection);
     return this.syncCatalogue(connection);
+  }
+
+  /**
+   * Re-probes an authorized endpoint. Before authorization every transport
+   * answers with the same 401, so the transport and capabilities recorded at
+   * creation time are only a guess; this is the first moment the gateway can
+   * observe what the server actually speaks.
+   */
+  private async detectTransport(connection: UpstreamConnection): Promise<void> {
+    const server = await this.requireServer(connection);
+    const probe = await probeMcpEndpoint({
+      url: server.canonicalUrl,
+      fetcher: this.deps.fetcher,
+      logger: this.deps.logger,
+      metrics: this.deps.metrics,
+      clientInfo: this.deps.clientInfo,
+      authHeaders: () =>
+        this.deps.tokenManager.authorizationHeaders({
+          tenantId: connection.tenantId,
+          connectionId: connection.id,
+        }),
+    }).catch(() => null);
+    if (!probe?.initializeResult) return;
+    await this.deps.store.mcpServers.update(server.tenantId, server.id, {
+      transportType: probe.transportType,
+      protocolVersion: probe.initializeResult.protocolVersion,
+      capabilitiesJson: toJsonObject(probe.initializeResult.capabilities),
+      displayName:
+        server.displayName === new URL(server.canonicalUrl).host
+          ? (probe.initializeResult.serverInfo?.name ?? server.displayName)
+          : server.displayName,
+    });
   }
 
   /**

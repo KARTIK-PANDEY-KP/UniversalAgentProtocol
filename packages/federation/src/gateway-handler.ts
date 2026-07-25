@@ -56,6 +56,16 @@ export interface GatewayHandlerDeps {
  * that were discovered at runtime from upstream servers.
  */
 export class GatewayMcpHandler implements McpServerHandler {
+  /**
+   * Sinks for in-flight calls, keyed by session and progress token, so a
+   * progress notification travels back on the stream that carries the call it
+   * belongs to rather than the session's general notification channel.
+   */
+  private readonly progressSinks = new Map<
+    string,
+    (notification: JsonRpcNotification) => void
+  >();
+
   constructor(private readonly deps: GatewayHandlerDeps) {}
 
   async onInitialize(
@@ -168,6 +178,16 @@ export class GatewayMcpHandler implements McpServerHandler {
     if (notification.method === McpMethod.ToolListChanged) {
       this.notifyCatalogueChanged(context.tenantId);
       return;
+    }
+    if (notification.method === McpMethod.Progress) {
+      const token = notification.params?.["progressToken"];
+      const sink = this.progressSinks.get(
+        progressKey(context.downstreamSessionId, token),
+      );
+      if (sink) {
+        sink(notification);
+        return;
+      }
     }
     const session = this.deps.lookupSession(context.downstreamSessionId);
     if (!session) return;
@@ -307,9 +327,14 @@ export class GatewayMcpHandler implements McpServerHandler {
     }
 
     this.deps.metrics.counter(Metric.McpToolCall, { alias: connection.alias });
+    const progressToken = readProgressToken(params);
+    if (progressToken !== undefined) {
+      this.progressSinks.set(progressKey(session.id, progressToken), (notification) => {
+        context.sendNotification(notification);
+      });
+    }
     try {
       const client = await this.deps.sessions.acquire(connection, session.id);
-      const progressToken = readProgressToken(params);
       const result = await client.callTool(tool.upstreamName, args, {
         idempotent: tool.riskLevel === "READ_ONLY",
         signal: context.signal,
@@ -336,6 +361,10 @@ export class GatewayMcpHandler implements McpServerHandler {
         { error: (error as Error).message },
       );
       throw error;
+    } finally {
+      if (progressToken !== undefined) {
+        this.progressSinks.delete(progressKey(session.id, progressToken));
+      }
     }
   }
 
@@ -545,6 +574,10 @@ export class GatewayMcpHandler implements McpServerHandler {
       },
     });
   }
+}
+
+function progressKey(sessionId: string, token: unknown): string {
+  return `${sessionId}:${String(token)}`;
 }
 
 function readProgressToken(params: JsonObject): string | number | undefined {

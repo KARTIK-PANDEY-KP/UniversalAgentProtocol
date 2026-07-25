@@ -245,7 +245,7 @@ export class MockAuthorizationServer {
       return;
     }
     if (request.method === "GET" && path === "/authorize") {
-      this.handleAuthorize(request, res);
+      await this.handleAuthorize(request, res);
       return;
     }
     if (request.method === "POST" && path === "/token") {
@@ -262,7 +262,10 @@ export class MockAuthorizationServer {
     }
   }
 
-  private handleAuthorize(request: FixtureRequest, res: ServerResponse): void {
+  private async handleAuthorize(
+    request: FixtureRequest,
+    res: ServerResponse,
+  ): Promise<void> {
     this.stats.authorizeRequests += 1;
     const query = request.url.searchParams;
     const clientId = query.get("client_id") ?? "";
@@ -283,7 +286,7 @@ export class MockAuthorizationServer {
       });
       return;
     }
-    const client = this.clients.get(clientId);
+    const client = this.clients.get(clientId) ?? (await this.resolveCimdClient(clientId));
     if (!client) {
       json(res, 400, { error: "invalid_client", error_description: "Unknown client" });
       return;

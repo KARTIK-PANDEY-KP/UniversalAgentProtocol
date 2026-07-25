@@ -156,6 +156,14 @@ export class HttpSseTransport implements McpTransport {
         } finally {
           clearTimeout(timer);
           response.discard();
+          // A stream that ends without announcing an endpoint is not a legacy
+          // MCP server; fail now instead of waiting out the timeout.
+          if (!settled) {
+            settled = true;
+            reject(
+              new McpProtocolError("Server never announced a message endpoint"),
+            );
+          }
           if (!this.closed) this.failPending();
         }
       })();
