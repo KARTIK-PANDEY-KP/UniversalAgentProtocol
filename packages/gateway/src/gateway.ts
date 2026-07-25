@@ -215,8 +215,8 @@ export class Gateway {
       identity,
       clientInfo: GATEWAY_SERVER_INFO,
       allowHttp: config.allowHttp,
-      onCatalogueChanged: (tenantId) => {
-        handlerRef?.notifyCatalogueChanged(tenantId);
+      onCatalogueChanged: (tenantId, changed) => {
+        handlerRef?.notifyCatalogueChanged(tenantId, changed);
       },
     });
 

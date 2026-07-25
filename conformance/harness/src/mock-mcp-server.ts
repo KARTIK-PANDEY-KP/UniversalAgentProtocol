@@ -164,14 +164,30 @@ export class MockMcpServer {
     await this.fixture.stop();
   }
 
-  /** Replaces the catalogue and announces the change to attached clients. */
-  setTools(tools: MockToolDefinition[]): void {
+  /**
+   * Replaces the catalogue. `announce` is false for servers that change
+   * quietly and leave clients to notice on their next poll, which is the
+   * majority of them.
+   */
+  setTools(tools: MockToolDefinition[], announce = true): void {
     this.tools = tools;
-    this.broadcast({ jsonrpc: JSONRPC_VERSION, method: McpMethod.ToolListChanged });
+    if (announce) {
+      this.broadcast({ jsonrpc: JSONRPC_VERSION, method: McpMethod.ToolListChanged });
+    }
   }
 
-  setResources(resources: MockResourceDefinition[]): void {
+  setResources(resources: MockResourceDefinition[], announce = true): void {
     this.resources = resources;
+    if (announce) {
+      this.broadcast({ jsonrpc: JSONRPC_VERSION, method: McpMethod.ResourceListChanged });
+    }
+  }
+
+  setPrompts(prompts: MockPromptDefinition[], announce = true): void {
+    this.prompts = prompts;
+    if (announce) {
+      this.broadcast({ jsonrpc: JSONRPC_VERSION, method: McpMethod.PromptListChanged });
+    }
   }
 
   /** Drops every session so the next request is answered with HTTP 404. */

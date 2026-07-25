@@ -42,6 +42,13 @@ import { classifyTool } from "./tool-classifier.js";
 import { CATALOGUE_SESSION } from "./upstream-sessions.js";
 import type { UpstreamSessionManager } from "./upstream-sessions.js";
 
+/** Which halves of a catalogue moved, so only the relevant clients are woken. */
+export interface CatalogueChange {
+  tools: boolean;
+  resources: boolean;
+  prompts: boolean;
+}
+
 export interface ConnectionServiceDeps {
   store: GatewayStore;
   vault: CredentialVault;
@@ -58,7 +65,7 @@ export interface ConnectionServiceDeps {
   identity: GatewayIdentity;
   clientInfo: McpImplementation;
   allowHttp: boolean;
-  onCatalogueChanged?(tenantId: string, connectionId: string): void;
+  onCatalogueChanged?(tenantId: string, changed: CatalogueChange): void;
 }
 
 export interface CreateConnectionInput {
@@ -471,8 +478,11 @@ export class ConnectionService {
       }));
 
       const sync = await this.deps.store.tools.sync(connection.id, toolRecords, started);
-      await this.deps.store.resources.sync(connection.id, resourceRecords);
-      await this.deps.store.prompts.sync(connection.id, promptRecords);
+      const resourcesChanged = await this.deps.store.resources.sync(
+        connection.id,
+        resourceRecords,
+      );
+      const promptsChanged = await this.deps.store.prompts.sync(connection.id, promptRecords);
 
       if (sync.changed.length > 0) {
         this.deps.metrics.counter(Metric.McpToolSchemaChanged, {
@@ -490,8 +500,13 @@ export class ConnectionService {
         lastErrorMessageRedacted: null,
       });
 
-      if (sync.added.length + sync.removed.length + sync.changed.length > 0) {
-        this.deps.onCatalogueChanged?.(connection.tenantId, connection.id);
+      const toolsChanged = sync.added.length + sync.removed.length + sync.changed.length > 0;
+      if (toolsChanged || resourcesChanged || promptsChanged) {
+        this.deps.onCatalogueChanged?.(connection.tenantId, {
+          tools: toolsChanged,
+          resources: resourcesChanged,
+          prompts: promptsChanged,
+        });
       }
       return sync;
     } catch (error) {
@@ -562,6 +577,11 @@ export class ConnectionService {
     await this.deps.store.resources.deleteByConnection(connectionId);
     await this.deps.store.prompts.deleteByConnection(connectionId);
     await this.deps.store.connections.delete(tenantId, connectionId);
+    this.deps.onCatalogueChanged?.(tenantId, {
+      tools: true,
+      resources: true,
+      prompts: true,
+    });
     await this.deps.audit.record({
       tenantId,
       connectionId,

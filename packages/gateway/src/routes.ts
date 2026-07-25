@@ -299,27 +299,34 @@ export function registerRoutes(
     const body = parseJsonBody(await readBody(req, MAX_BODY));
     const issuer = String(body["issuer"] ?? "");
     const clientId = String(body["client_id"] ?? "");
+    const initialAccessToken = body["initial_access_token"];
     const method = String(body["token_endpoint_auth_method"] ?? "client_secret_basic");
-    if (!issuer || !clientId || !isTokenEndpointAuthMethod(method)) {
+    // Either an OAuth client the operator created in a portal, or a token that
+    // lets the gateway register itself at a closed registration endpoint.
+    const usable = clientId !== "" || typeof initialAccessToken === "string";
+    if (!issuer || !usable || !isTokenEndpointAuthMethod(method)) {
       sendJson(res, 400, {
         error: "invalid_request",
-        message: "issuer, client_id and a supported token_endpoint_auth_method are required",
+        message:
+          "issuer, a supported token_endpoint_auth_method, and either client_id " +
+          "or initial_access_token are required",
       });
       return;
     }
-    const secret = body["client_secret"];
+    const seal = (value: unknown): Promise<string> | null =>
+      typeof value === "string"
+        ? services.vault.encrypt(
+            { tenantId: principal.tenantId, purpose: "client_secret" },
+            value,
+          )
+        : null;
     const record = await store.preconfiguredClients.upsert({
       id: newId("pcc"),
       tenantId: principal.tenantId,
       issuer,
       clientId,
-      clientSecretEncrypted:
-        typeof secret === "string"
-          ? await services.vault.encrypt(
-              { tenantId: principal.tenantId, purpose: "client_secret" },
-              secret,
-            )
-          : null,
+      clientSecretEncrypted: await seal(body["client_secret"]),
+      initialAccessTokenEncrypted: await seal(initialAccessToken),
       redirectUri: String(body["redirect_uri"] ?? identity.redirectUri),
       tokenEndpointAuthMethod: method,
       scopes: Array.isArray(body["scopes"]) ? (body["scopes"] as string[]) : null,

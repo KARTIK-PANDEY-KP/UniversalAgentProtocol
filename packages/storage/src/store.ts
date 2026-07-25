@@ -144,7 +144,8 @@ export interface ToolRepository {
 }
 
 export interface ResourceRepository {
-  sync(connectionId: string, resources: DiscoveredResource[]): Promise<void>;
+  /** Replaces the connection's resources; true when the catalogue changed. */
+  sync(connectionId: string, resources: DiscoveredResource[]): Promise<boolean>;
   listByTenant(tenantId: string): Promise<DiscoveredResource[]>;
   findByGatewayUri(
     tenantId: string,
@@ -154,7 +155,8 @@ export interface ResourceRepository {
 }
 
 export interface PromptRepository {
-  sync(connectionId: string, prompts: DiscoveredPrompt[]): Promise<void>;
+  /** Replaces the connection's prompts; true when the catalogue changed. */
+  sync(connectionId: string, prompts: DiscoveredPrompt[]): Promise<boolean>;
   listByTenant(tenantId: string): Promise<DiscoveredPrompt[]>;
   findByGatewayName(
     tenantId: string,

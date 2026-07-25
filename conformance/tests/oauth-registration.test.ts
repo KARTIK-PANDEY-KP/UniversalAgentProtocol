@@ -166,6 +166,28 @@ describe("OAuth client registration", () => {
     expect(upstream.authorizationServer.stats.registrations).toBe(1);
   });
 
+  it("registers dynamically with an initial access token an operator supplied", async () => {
+    const { gateway, upstream } = await scenario({
+      supportsDcr: true,
+      initialAccessToken: "operator-issued-token",
+    });
+    // No client_id: the operator has a registration token, not an OAuth client.
+    const configured = await gateway.api("POST", "/api/v1/oauth-client-configurations", {
+      issuer: upstream.authorizationServer.issuer,
+      initial_access_token: "operator-issued-token",
+      token_endpoint_auth_method: "client_secret_basic",
+    });
+    expect(configured.status).toBe(201);
+
+    const { connection } = await connectUpstream(gateway, upstream.url);
+    expect(connection.status).toBe("CONNECTED");
+
+    // Dynamic registration, not the preconfigured strategy claiming the row.
+    const registration = await registrationOf(gateway);
+    expect(registration.registrationType).toBe("DYNAMIC");
+    expect(upstream.authorizationServer.stats.registrations).toBe(1);
+  });
+
   it("treats a connection without a refresh token as non-refreshable", async () => {
     const { gateway, upstream } = await scenario({
       supportsDcr: true,

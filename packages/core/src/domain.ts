@@ -254,8 +254,14 @@ export interface PreconfiguredOAuthClient {
   id: string;
   tenantId: string;
   issuer: string;
+  /** Empty when the operator supplied only a registration token. */
   clientId: string;
   clientSecretEncrypted: string | null;
+  /**
+   * RFC 7591 initial access token for an authorization server whose
+   * registration endpoint is closed to anonymous clients.
+   */
+  initialAccessTokenEncrypted: string | null;
   redirectUri: string;
   tokenEndpointAuthMethod: TokenEndpointAuthMethod;
   scopes: string[] | null;

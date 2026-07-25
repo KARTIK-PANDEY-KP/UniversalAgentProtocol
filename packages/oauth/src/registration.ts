@@ -103,7 +103,9 @@ export class PreconfiguredRegistrationStrategy
       context.tenantId,
       context.issuerRecord.issuer,
     );
-    return record !== null;
+    // A row holding only an initial access token is configuration for dynamic
+    // registration, not a client identity of its own.
+    return record !== null && record.clientId !== "";
   }
 
   async getOrCreateRegistration(
@@ -415,7 +417,7 @@ export class UserSuppliedRegistrationStrategy
 export class RegistrationSelector {
   private readonly strategies: OAuthClientRegistrationStrategy[];
 
-  constructor(deps: RegistrationDeps) {
+  constructor(private readonly deps: RegistrationDeps) {
     this.strategies = [
       new PreconfiguredRegistrationStrategy(deps),
       new ClientIdMetadataDocumentStrategy(deps),
@@ -425,14 +427,31 @@ export class RegistrationSelector {
   }
 
   async resolve(context: RegistrationContext): Promise<ResolvedClientRegistration> {
+    const resolved = { ...context, initialAccessToken: await this.initialAccessToken(context) };
     for (const strategy of this.strategies) {
-      if (await strategy.supports(context.metadata, context)) {
-        return strategy.getOrCreateRegistration(context);
+      if (await strategy.supports(resolved.metadata, resolved)) {
+        return strategy.getOrCreateRegistration(resolved);
       }
     }
     throw new GatewayError(
       "CLIENT_CREDENTIALS_REQUIRED",
       "No usable OAuth client registration mechanism",
+    );
+  }
+
+  /** An operator-supplied RFC 7591 token, for a registration endpoint that needs one. */
+  private async initialAccessToken(
+    context: RegistrationContext,
+  ): Promise<string | null> {
+    if (context.initialAccessToken) return context.initialAccessToken;
+    const configured = await this.deps.store.preconfiguredClients.findByIssuer(
+      context.tenantId,
+      context.issuerRecord.issuer,
+    );
+    if (!configured?.initialAccessTokenEncrypted) return null;
+    return this.deps.vault.decrypt(
+      { tenantId: context.tenantId, purpose: "client_secret" },
+      configured.initialAccessTokenEncrypted,
     );
   }
 }

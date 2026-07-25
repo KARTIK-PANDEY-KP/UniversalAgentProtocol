@@ -30,6 +30,7 @@ import { Metric, type Logger, type MetricsRegistry } from "@umg/observability";
 import type { GatewayStore } from "@umg/storage";
 
 import type { AuditService } from "./audit.js";
+import type { CatalogueChange } from "./connection-service.js";
 import { splitPromptName, splitResourceUri } from "./naming.js";
 import type { PolicyEngine } from "./policy-engine.js";
 import type { UpstreamMessageContext, UpstreamSessionManager } from "./upstream-sessions.js";
@@ -50,6 +51,12 @@ export interface GatewayHandlerDeps {
   /** All live sessions for a tenant, used for list-changed fan-out. */
   sessionsForTenant(tenantId: string): DownstreamSessionHandle[];
 }
+
+const LIST_CHANGED_METHODS = new Set<string>([
+  McpMethod.ToolListChanged,
+  McpMethod.ResourceListChanged,
+  McpMethod.PromptListChanged,
+]);
 
 /**
  * Implements the MCP surface the gateway presents to Cursor, Claude Code,
@@ -157,11 +164,14 @@ export class GatewayMcpHandler implements McpServerHandler {
   }
 
   /** Announces catalogue changes to every live session of a tenant. */
-  notifyCatalogueChanged(tenantId: string): void {
-    const notification: JsonRpcNotification = {
-      jsonrpc: JSONRPC_VERSION,
-      method: McpMethod.ToolListChanged,
-    };
+  notifyCatalogueChanged(tenantId: string, changed: CatalogueChange): void {
+    if (changed.tools) this.broadcast(tenantId, McpMethod.ToolListChanged);
+    if (changed.resources) this.broadcast(tenantId, McpMethod.ResourceListChanged);
+    if (changed.prompts) this.broadcast(tenantId, McpMethod.PromptListChanged);
+  }
+
+  private broadcast(tenantId: string, method: string): void {
+    const notification: JsonRpcNotification = { jsonrpc: JSONRPC_VERSION, method };
     for (const session of this.deps.sessionsForTenant(tenantId)) {
       session.sendNotification(notification);
     }
@@ -176,8 +186,10 @@ export class GatewayMcpHandler implements McpServerHandler {
     context: UpstreamMessageContext,
     notification: JsonRpcNotification,
   ): void {
-    if (notification.method === McpMethod.ToolListChanged) {
-      this.notifyCatalogueChanged(context.tenantId);
+    // A catalogue change concerns everyone connected to this tenant, not just
+    // the session that happened to be holding the upstream connection open.
+    if (LIST_CHANGED_METHODS.has(notification.method)) {
+      this.broadcast(context.tenantId, notification.method);
       return;
     }
     if (notification.method === McpMethod.Progress) {

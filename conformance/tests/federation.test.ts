@@ -194,6 +194,43 @@ describe("tool federation", () => {
     await client.close();
   });
 
+  it("announces resource and prompt changes, not just tool changes", async () => {
+    const gateway = await newGateway();
+    const server = await openMcpServer({
+      tools: [{ name: "one" }],
+      resources: [{ uri: "file:///a.txt", name: "a" }],
+      prompts: [{ name: "greet" }],
+    });
+    const connection = await gateway.createConnection(server.url, { alias: "up" });
+
+    const client = await connectedClient(gateway);
+    await client.openStream();
+
+    // The upstream changes quietly and the tool catalogue is untouched, so the
+    // gateway has to notice the difference itself when it resyncs.
+    server.setResources(
+      [
+        { uri: "file:///a.txt", name: "a" },
+        { uri: "file:///b.txt", name: "b" },
+      ],
+      false,
+    );
+    server.setPrompts([{ name: "greet" }, { name: "farewell" }], false);
+    await gateway.api("POST", `/api/v1/connections/${connection.connection_id}/refresh`);
+
+    await waitFor(() =>
+      [McpMethod.ResourceListChanged, McpMethod.PromptListChanged].every((method) =>
+        client.notifications.some((notification) => notification.method === method),
+      ),
+    );
+    expect(
+      client.notifications.some(
+        (notification) => notification.method === McpMethod.ToolListChanged,
+      ),
+    ).toBe(false);
+    await client.close();
+  });
+
   it("hides a disabled tool and refuses to call it", async () => {
     const gateway = await newGateway();
     const server = await openMcpServer({

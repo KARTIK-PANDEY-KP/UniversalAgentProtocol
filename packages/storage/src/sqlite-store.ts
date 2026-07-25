@@ -370,8 +370,13 @@ export class SqliteGatewayStore implements GatewayStore {
 
     this.resources = {
       sync: async (connectionId, resources) => {
+        const before = resourceTable.findMany({ connection_id: connectionId }, "gateway_uri");
         resourceTable.delete({ connection_id: connectionId });
         for (const resource of resources) resourceTable.insert(resource);
+        return differs(
+          before.map(resourceIdentity),
+          resources.map(resourceIdentity),
+        );
       },
       listByTenant: async (tenantId) =>
         resourceTable.findMany({ tenant_id: tenantId }, "gateway_uri"),
@@ -384,8 +389,10 @@ export class SqliteGatewayStore implements GatewayStore {
 
     this.prompts = {
       sync: async (connectionId, prompts) => {
+        const before = promptTable.findMany({ connection_id: connectionId }, "gateway_name");
         promptTable.delete({ connection_id: connectionId });
         for (const prompt of prompts) promptTable.insert(prompt);
+        return differs(before.map(promptIdentity), prompts.map(promptIdentity));
       },
       listByTenant: async (tenantId) =>
         promptTable.findMany({ tenant_id: tenantId }, "gateway_name"),
@@ -498,6 +505,31 @@ function syncTools(
     result.removed.push(stale.gatewayName);
   }
   return result;
+}
+
+/** Identity of a resource for change detection: what a client would notice. */
+function resourceIdentity(resource: DiscoveredResource): string {
+  return [
+    resource.gatewayUri,
+    resource.name,
+    resource.description ?? "",
+    resource.mimeType ?? "",
+  ].join("\u0000");
+}
+
+function promptIdentity(prompt: DiscoveredPrompt): string {
+  return [
+    prompt.gatewayName,
+    prompt.description ?? "",
+    JSON.stringify(prompt.argumentsJson ?? null),
+  ].join("\u0000");
+}
+
+function differs(before: string[], after: string[]): boolean {
+  if (before.length !== after.length) return true;
+  const sortedBefore = [...before].sort();
+  const sortedAfter = [...after].sort();
+  return sortedBefore.some((entry, index) => entry !== sortedAfter[index]);
 }
 
 export function createInMemoryStore(now?: () => number): SqliteGatewayStore {
