@@ -132,6 +132,37 @@ export class GatewayFixture {
       .catch(() => undefined);
   }
 
+  /**
+   * Ages the stored access token so the next upstream request has to refresh.
+   * The refresh token is left intact, which is the situation the refresh
+   * coordinator exists to handle.
+   */
+  async expireAccessToken(connectionId: string): Promise<void> {
+    await this.services.store.connections.update(connectionId, {
+      accessTokenExpiresAt: this.services.clock.now() - 1_000,
+    });
+  }
+
+  /** Reads the plaintext refresh token, for assertions about rotation. */
+  async storedRefreshToken(connectionId: string): Promise<string | null> {
+    const connection = await this.services.store.connections.get(
+      this.tenantId,
+      connectionId,
+    );
+    if (!connection?.refreshTokenEncrypted) return null;
+    return this.services.vault.decrypt(
+      { tenantId: this.tenantId, purpose: "refresh_token" },
+      connection.refreshTokenEncrypted,
+    );
+  }
+
+  async accessToken(connectionId: string): Promise<string> {
+    return this.services.tokenManager.getValidAccessToken({
+      tenantId: this.tenantId,
+      connectionId,
+    });
+  }
+
   async api(
     method: string,
     path: string,
