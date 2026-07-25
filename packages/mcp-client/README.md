@@ -54,6 +54,10 @@ above this module.
   waiting on a response that can no longer arrive.
 - Stream reconnection resumes from the last event id when the server offers
   one, and reports a gap when it cannot.
+- A session the upstream no longer holds is rebuilt rather than retried against.
+  The spec words that refusal as a 404 and the reference server words it as a
+  400 once it has restarted; both are read the same way, and the id that earned
+  the refusal is never presented again.
 - Protocol version negotiation follows the upstream's answer, not a hardcoded
   assumption.
 

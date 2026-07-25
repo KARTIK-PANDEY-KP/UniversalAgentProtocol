@@ -77,8 +77,12 @@ export class UpstreamMcpConnection {
   /** In-flight connect and re-initialize, so concurrent callers share one. */
   private connecting: Promise<McpTransport> | null = null;
   private recreating: Promise<void> | null = null;
+  /** Dropped once the upstream has told us it does not hold this session. */
+  private resumeSessionId: string | null;
 
-  constructor(private readonly options: UpstreamConnectionOptions) {}
+  constructor(private readonly options: UpstreamConnectionOptions) {
+    this.resumeSessionId = options.resumeSessionId ?? null;
+  }
 
   get capabilities(): McpServerCapabilities {
     return this.initializeResult?.capabilities ?? {};
@@ -260,6 +264,9 @@ export class UpstreamMcpConnection {
       await this.transport?.close().catch(() => undefined);
       this.transport = null;
       this.initializeResult = null;
+      // Handing the same id back to a server that has just disowned it earns
+      // the same refusal, so the replacement starts from nothing.
+      this.resumeSessionId = null;
       await this.initialize();
     })().finally(() => {
       this.recreating = null;
@@ -373,8 +380,8 @@ export class UpstreamMcpConnection {
         ? {}
         : { requestTimeoutMs: this.options.requestTimeoutMs }),
     });
-    if (this.options.resumeSessionId) {
-      transport.setSessionId(this.options.resumeSessionId);
+    if (this.resumeSessionId) {
+      transport.setSessionId(this.resumeSessionId);
     }
     this.transport = transport;
     return transport;

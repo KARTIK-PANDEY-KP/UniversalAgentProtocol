@@ -115,6 +115,61 @@ describe("MCP transport", () => {
     await client.close();
   });
 
+  it("reinitializes when a restarted upstream calls the session a bad request", async () => {
+    // The spec has a server disown a session id with 404. The reference server
+    // answers 400 "Server not initialized" once it has restarted, and a
+    // restart is how an upstream loses a session in practice, so reading only
+    // the 404 leaves the connection wedged until the gateway itself restarts.
+    const upstream = await startProtectedUpstream({
+      authorizationServer: { supportsDcr: true },
+      mcpServer: {
+        stateful: true,
+        tools: [
+          {
+            name: "read_item",
+            annotations: { readOnlyHint: true },
+            handler: () => ({ content: [{ type: "text", text: "item" }] }),
+          },
+        ],
+      },
+    });
+    started.push(upstream);
+    const gateway = await newGateway();
+    await connectUpstream(gateway, upstream.url, { alias: "up" });
+
+    const client = await connectedClient(gateway);
+    await client.callTool("up.read_item");
+    const initializesBefore = upstream.mcpServer.stats.initializes;
+
+    upstream.mcpServer.restart();
+    expect(await client.callTool("up.read_item")).toMatchObject({
+      content: [{ type: "text", text: "item" }],
+    });
+    expect(upstream.mcpServer.stats.initializes).toBeGreaterThan(initializesBefore);
+    await client.close();
+  });
+
+  it("still reports a bad request that is not about the session", async () => {
+    const upstream = await startProtectedUpstream({
+      authorizationServer: { supportsDcr: true },
+      mcpServer: { stateful: true, tools: [{ name: "read_item" }] },
+    });
+    started.push(upstream);
+    const gateway = await newGateway();
+    await connectUpstream(gateway, upstream.url, { alias: "up" });
+
+    const client = await connectedClient(gateway);
+    await client.callTool("up.read_item");
+    const initializesBefore = upstream.mcpServer.stats.initializes;
+
+    upstream.mcpServer.failNextRequests(1, 400);
+    const failure = await client.callTool("up.read_item").catch((error: Error) => error);
+    expect(failure).toBeInstanceOf(Error);
+    // Reinitializing here would hide the fault and lose the session for nothing.
+    expect(upstream.mcpServer.stats.initializes).toBe(initializesBefore);
+    await client.close();
+  });
+
   it("refuses to silently replay a write call across a session expiry", async () => {
     const upstream = await startProtectedUpstream({
       authorizationServer: { supportsDcr: true },
