@@ -1,0 +1,556 @@
+import {
+  GatewayError,
+  JSONRPC_VERSION,
+  JsonRpcErrorCode,
+  LATEST_PROTOCOL_VERSION,
+  McpMethod,
+  isRecord,
+  jsonRpcFailure,
+  jsonRpcSuccess,
+  toJsonObject,
+  type Clock,
+  type DiscoveredTool,
+  type JsonObject,
+  type JsonRpcNotification,
+  type JsonRpcRequest,
+  type JsonRpcResponse,
+  type McpImplementation,
+  type McpInitializeParams,
+  type McpInitializeResult,
+  type McpTool,
+  type UpstreamConnection,
+} from "@umg/core";
+import type {
+  DownstreamSessionHandle,
+  McpServerHandler,
+  RequestContext,
+} from "@umg/mcp-server";
+import { Metric, type Logger, type MetricsRegistry } from "@umg/observability";
+import type { GatewayStore } from "@umg/storage";
+
+import type { AuditService } from "./audit.js";
+import { splitPromptName, splitResourceUri } from "./naming.js";
+import type { PolicyEngine } from "./policy-engine.js";
+import type { UpstreamMessageContext, UpstreamSessionManager } from "./upstream-sessions.js";
+
+export interface GatewayHandlerDeps {
+  store: GatewayStore;
+  sessions: UpstreamSessionManager;
+  policy: PolicyEngine;
+  audit: AuditService;
+  clock: Clock;
+  logger: Logger;
+  metrics: MetricsRegistry;
+  serverInfo: McpImplementation;
+  instructions?: string;
+  /** Resolves a live downstream session so upstream messages can be routed back. */
+  lookupSession(sessionId: string): DownstreamSessionHandle | undefined;
+  /** All live sessions for a tenant, used for list-changed fan-out. */
+  sessionsForTenant(tenantId: string): DownstreamSessionHandle[];
+  rolesForUser?(tenantId: string, userId: string): string[];
+}
+
+/**
+ * Implements the MCP surface the gateway presents to Cursor, Claude Code,
+ * Codex and any other client. Everything it returns is assembled from records
+ * that were discovered at runtime from upstream servers.
+ */
+export class GatewayMcpHandler implements McpServerHandler {
+  constructor(private readonly deps: GatewayHandlerDeps) {}
+
+  async onInitialize(
+    params: McpInitializeParams,
+    session: DownstreamSessionHandle,
+  ): Promise<McpInitializeResult> {
+    await this.deps.store.downstreamSessions.create({
+      id: session.id,
+      tenantId: session.tenantId,
+      userId: session.userId,
+      clientLabel: session.clientLabel,
+      protocolVersion: session.protocolVersion,
+      capabilitiesJson: toJsonObject(params.capabilities ?? {}),
+      createdAt: this.deps.clock.now(),
+      lastSeenAt: this.deps.clock.now(),
+      status: "ACTIVE",
+    });
+    this.deps.logger.info("Downstream MCP session initialized", {
+      tenantId: session.tenantId,
+      sessionId: session.id,
+      clientLabel: session.clientLabel,
+      protocolVersion: session.protocolVersion,
+    });
+    const result: McpInitializeResult = {
+      protocolVersion: session.protocolVersion || LATEST_PROTOCOL_VERSION,
+      capabilities: {
+        tools: { listChanged: true },
+        resources: { listChanged: true, subscribe: true },
+        prompts: { listChanged: true },
+        logging: {},
+      },
+      serverInfo: this.deps.serverInfo,
+    };
+    if (this.deps.instructions) result.instructions = this.deps.instructions;
+    return result;
+  }
+
+  async onRequest(
+    request: JsonRpcRequest,
+    session: DownstreamSessionHandle,
+    context: RequestContext,
+  ): Promise<JsonObject> {
+    const params = request.params ?? {};
+    switch (request.method) {
+      case McpMethod.Ping:
+        return {};
+      case McpMethod.ToolsList:
+        return { tools: (await this.listTools(session)).map(toJsonObject) };
+      case McpMethod.ToolsCall:
+        return this.callTool(params, session, context);
+      case McpMethod.ResourcesList:
+        return { resources: await this.listResources(session, false) };
+      case McpMethod.ResourcesTemplatesList:
+        return { resourceTemplates: await this.listResources(session, true) };
+      case McpMethod.ResourcesRead:
+        return this.readResource(params, session);
+      case McpMethod.ResourcesSubscribe:
+        return this.resourceSubscription(params, session, true);
+      case McpMethod.ResourcesUnsubscribe:
+        return this.resourceSubscription(params, session, false);
+      case McpMethod.PromptsList:
+        return { prompts: await this.listPrompts(session) };
+      case McpMethod.PromptsGet:
+        return this.getPrompt(params, session);
+      case McpMethod.LoggingSetLevel:
+        return {};
+      default:
+        throw new GatewayError(
+          "INVALID_REQUEST",
+          `Unsupported method: ${request.method}`,
+        );
+    }
+  }
+
+  async onNotification(
+    notification: JsonRpcNotification,
+    session: DownstreamSessionHandle,
+  ): Promise<void> {
+    this.deps.logger.debug("Downstream notification", {
+      method: notification.method,
+      sessionId: session.id,
+    });
+  }
+
+  async onSessionClosed(session: DownstreamSessionHandle): Promise<void> {
+    await this.deps.sessions.releaseDownstream(session.id);
+    await this.deps.store.downstreamSessions.close(session.id);
+  }
+
+  /** Announces catalogue changes to every live session of a tenant. */
+  notifyCatalogueChanged(tenantId: string): void {
+    const notification: JsonRpcNotification = {
+      jsonrpc: JSONRPC_VERSION,
+      method: McpMethod.ToolListChanged,
+    };
+    for (const session of this.deps.sessionsForTenant(tenantId)) {
+      session.sendNotification(notification);
+    }
+  }
+
+  /**
+   * Forwards a notification that arrived on an upstream session to the single
+   * downstream session responsible for it. Notifications are never broadcast
+   * across sessions.
+   */
+  routeUpstreamNotification(
+    context: UpstreamMessageContext,
+    notification: JsonRpcNotification,
+  ): void {
+    if (notification.method === McpMethod.ToolListChanged) {
+      this.notifyCatalogueChanged(context.tenantId);
+      return;
+    }
+    const session = this.deps.lookupSession(context.downstreamSessionId);
+    if (!session) return;
+    if (notification.method === McpMethod.ResourceUpdated) {
+      const uri = notification.params?.["uri"];
+      if (typeof uri === "string") {
+        session.sendNotification({
+          ...notification,
+          params: { ...notification.params, uri: `${context.alias}+${uri}` },
+        });
+        return;
+      }
+    }
+    session.sendNotification(notification);
+  }
+
+  /**
+   * Routes an upstream server-to-client request to the downstream session that
+   * triggered it, after checking gateway policy and client capabilities.
+   */
+  async routeUpstreamRequest(
+    context: UpstreamMessageContext,
+    request: JsonRpcRequest,
+  ): Promise<JsonRpcResponse> {
+    if (!this.deps.policy.allowsServerRequest(request.method)) {
+      return jsonRpcFailure(
+        request.id,
+        JsonRpcErrorCode.PolicyDenied,
+        `Gateway policy does not allow ${request.method}`,
+      );
+    }
+    const session = this.deps.lookupSession(context.downstreamSessionId);
+    if (!session) {
+      return jsonRpcFailure(
+        request.id,
+        JsonRpcErrorCode.MethodNotFound,
+        "No downstream client is attached to this upstream session",
+      );
+    }
+    const supported =
+      (request.method.startsWith("sampling/") && session.capabilities.sampling) ||
+      (request.method.startsWith("elicitation/") && session.capabilities.elicitation) ||
+      (request.method.startsWith("roots/") && session.capabilities.roots);
+    if (!supported) {
+      return jsonRpcFailure(
+        request.id,
+        JsonRpcErrorCode.MethodNotFound,
+        `The connected client does not support ${request.method}`,
+      );
+    }
+    try {
+      const result = await session.sendRequest(request.method, request.params ?? {});
+      return jsonRpcSuccess(request.id, result);
+    } catch (error) {
+      return jsonRpcFailure(
+        request.id,
+        JsonRpcErrorCode.InternalError,
+        (error as Error).message,
+      );
+    }
+  }
+
+  private async listTools(session: DownstreamSessionHandle): Promise<McpTool[]> {
+    const connections = await this.visibleConnections(session);
+    const usable = new Set(
+      connections
+        .filter((connection) => connection.status !== "DISABLED")
+        .map((connection) => connection.id),
+    );
+    const tools = await this.deps.store.tools.listByTenant(session.tenantId);
+    return tools
+      .filter((tool) => tool.enabled && usable.has(tool.connectionId))
+      .map((tool) => {
+        const descriptor: McpTool = {
+          name: tool.gatewayName,
+          inputSchema: tool.inputSchemaJson,
+        };
+        if (tool.description) descriptor.description = tool.description;
+        if (tool.outputSchemaJson) descriptor.outputSchema = tool.outputSchemaJson;
+        if (tool.annotationsJson) descriptor.annotations = tool.annotationsJson;
+        return descriptor;
+      });
+  }
+
+  private async callTool(
+    params: JsonObject,
+    session: DownstreamSessionHandle,
+    context: RequestContext,
+  ): Promise<JsonObject> {
+    const name = params["name"];
+    if (typeof name !== "string") {
+      throw new GatewayError("INVALID_REQUEST", "tools/call requires a tool name");
+    }
+    const args = params["arguments"] ?? {};
+    const started = this.deps.clock.now();
+
+    const tool = await this.deps.store.tools.findByGatewayName(session.tenantId, name);
+    if (!tool) {
+      throw new GatewayError("NOT_FOUND", `Unknown tool: ${name}`);
+    }
+    const connection = await this.requireVisibleConnection(session, tool.connectionId);
+
+    const decision = this.deps.policy.evaluateToolCall({
+      tool,
+      connection,
+      args,
+      roles: this.deps.rolesForUser?.(session.tenantId, session.userId) ?? [],
+    });
+    if (decision.outcome === "DENY") {
+      await this.audit(session, tool, connection, "tools/call", args, "DENIED", started, {
+        reason: decision.reason ?? "denied",
+      });
+      throw new GatewayError("POLICY_DENIED", decision.reason ?? "Blocked by policy");
+    }
+    if (decision.outcome === "REQUIRE_CONFIRMATION") {
+      const confirmed = await this.confirm(session, tool);
+      this.deps.metrics.counter(Metric.DestructiveToolConfirmation, {
+        outcome: confirmed ? "accepted" : "declined",
+      });
+      if (!confirmed) {
+        await this.audit(
+          session,
+          tool,
+          connection,
+          "tools/call",
+          args,
+          "DENIED",
+          started,
+          { reason: "confirmation_required" },
+        );
+        throw new GatewayError(
+          "POLICY_DENIED",
+          `${tool.gatewayName} is classified ${tool.riskLevel} and needs confirmation. ` +
+            "Approve it in the gateway control plane or use a client that supports elicitation.",
+        );
+      }
+    }
+
+    this.deps.metrics.counter(Metric.McpToolCall, { alias: connection.alias });
+    try {
+      const client = await this.deps.sessions.acquire(connection, session.id);
+      const progressToken = readProgressToken(params);
+      const result = await client.callTool(tool.upstreamName, args, {
+        idempotent: tool.riskLevel === "READ_ONLY",
+        signal: context.signal,
+        ...(progressToken === undefined ? {} : { progressToken }),
+      });
+      this.deps.policy.assertResultWithinLimits(result);
+      this.deps.metrics.observe(
+        Metric.McpToolCallDuration,
+        this.deps.clock.now() - started,
+        { alias: connection.alias },
+      );
+      await this.audit(session, tool, connection, "tools/call", args, "OK", started);
+      return toJsonObject(result);
+    } catch (error) {
+      this.deps.metrics.counter(Metric.McpToolCallFailed, { alias: connection.alias });
+      await this.audit(
+        session,
+        tool,
+        connection,
+        "tools/call",
+        args,
+        "ERROR",
+        started,
+        { error: (error as Error).message },
+      );
+      throw error;
+    }
+  }
+
+  private async confirm(
+    session: DownstreamSessionHandle,
+    tool: DiscoveredTool,
+  ): Promise<boolean> {
+    if (!session.capabilities.elicitation) return false;
+    try {
+      const response = await session.sendRequest(McpMethod.ElicitationCreate, {
+        message:
+          `The gateway classified ${tool.gatewayName} as ${tool.riskLevel}. ` +
+          "Confirm that you want to run it.",
+        requestedSchema: {
+          type: "object",
+          properties: {
+            confirm: {
+              type: "boolean",
+              description: "Run this tool",
+            },
+          },
+          required: ["confirm"],
+        },
+      });
+      const content = response["content"];
+      return (
+        response["action"] === "accept" &&
+        isRecord(content) &&
+        content["confirm"] === true
+      );
+    } catch (error) {
+      this.deps.logger.warn("Confirmation request failed", {
+        tool: tool.gatewayName,
+        error: (error as Error).message,
+      });
+      return false;
+    }
+  }
+
+  private async listResources(
+    session: DownstreamSessionHandle,
+    templates: boolean,
+  ): Promise<JsonObject[]> {
+    const connections = await this.visibleConnections(session);
+    const usable = new Set(connections.map((connection) => connection.id));
+    const resources = await this.deps.store.resources.listByTenant(session.tenantId);
+    return resources
+      .filter(
+        (resource) => usable.has(resource.connectionId) && resource.isTemplate === templates,
+      )
+      .map((resource) => {
+        const descriptor: JsonObject = templates
+          ? { uriTemplate: resource.gatewayUri, name: resource.name }
+          : { uri: resource.gatewayUri, name: resource.name };
+        if (resource.description) descriptor["description"] = resource.description;
+        if (resource.mimeType) descriptor["mimeType"] = resource.mimeType;
+        return descriptor;
+      });
+  }
+
+  private async readResource(
+    params: JsonObject,
+    session: DownstreamSessionHandle,
+  ): Promise<JsonObject> {
+    const uri = params["uri"];
+    if (typeof uri !== "string") {
+      throw new GatewayError("INVALID_REQUEST", "resources/read requires a uri");
+    }
+    const record = await this.deps.store.resources.findByGatewayUri(
+      session.tenantId,
+      uri,
+    );
+    const routed = record
+      ? { connectionId: record.connectionId, upstreamUri: record.upstreamUri }
+      : await this.routeByAlias(session, uri);
+    const connection = await this.requireVisibleConnection(session, routed.connectionId);
+    const client = await this.deps.sessions.acquire(connection, session.id);
+    const contents = await client.readResource(routed.upstreamUri);
+    return toJsonObject(contents);
+  }
+
+  private async resourceSubscription(
+    params: JsonObject,
+    session: DownstreamSessionHandle,
+    subscribe: boolean,
+  ): Promise<JsonObject> {
+    const uri = params["uri"];
+    if (typeof uri !== "string") {
+      throw new GatewayError("INVALID_REQUEST", "A resource uri is required");
+    }
+    const record = await this.deps.store.resources.findByGatewayUri(
+      session.tenantId,
+      uri,
+    );
+    const routed = record
+      ? { connectionId: record.connectionId, upstreamUri: record.upstreamUri }
+      : await this.routeByAlias(session, uri);
+    const connection = await this.requireVisibleConnection(session, routed.connectionId);
+    const client = await this.deps.sessions.acquire(connection, session.id);
+    if (subscribe) await client.subscribeResource(routed.upstreamUri);
+    else await client.unsubscribeResource(routed.upstreamUri);
+    return {};
+  }
+
+  private async listPrompts(session: DownstreamSessionHandle): Promise<JsonObject[]> {
+    const connections = await this.visibleConnections(session);
+    const usable = new Set(connections.map((connection) => connection.id));
+    const prompts = await this.deps.store.prompts.listByTenant(session.tenantId);
+    return prompts
+      .filter((prompt) => usable.has(prompt.connectionId))
+      .map((prompt) => {
+        const descriptor: JsonObject = { name: prompt.gatewayName };
+        if (prompt.description) descriptor["description"] = prompt.description;
+        const args = prompt.argumentsJson?.["arguments"];
+        if (Array.isArray(args)) descriptor["arguments"] = args;
+        return descriptor;
+      });
+  }
+
+  private async getPrompt(
+    params: JsonObject,
+    session: DownstreamSessionHandle,
+  ): Promise<JsonObject> {
+    const name = params["name"];
+    if (typeof name !== "string") {
+      throw new GatewayError("INVALID_REQUEST", "prompts/get requires a name");
+    }
+    const record = await this.deps.store.prompts.findByGatewayName(
+      session.tenantId,
+      name,
+    );
+    if (!record) throw new GatewayError("NOT_FOUND", `Unknown prompt: ${name}`);
+    const connection = await this.requireVisibleConnection(session, record.connectionId);
+    const client = await this.deps.sessions.acquire(connection, session.id);
+    const result = await client.getPrompt(record.upstreamName, params["arguments"] ?? {});
+    return toJsonObject(result);
+  }
+
+  /** Falls back to alias routing for resource URIs that were never listed. */
+  private async routeByAlias(
+    session: DownstreamSessionHandle,
+    gatewayUri: string,
+  ): Promise<{ connectionId: string; upstreamUri: string }> {
+    const split = splitResourceUri(gatewayUri) ?? splitPromptName(gatewayUri);
+    if (!split) {
+      throw new GatewayError("NOT_FOUND", `Unknown resource: ${gatewayUri}`);
+    }
+    const alias = "alias" in split ? split.alias : "";
+    const connection = await this.deps.store.connections.findByAlias(
+      session.tenantId,
+      alias,
+    );
+    if (!connection) {
+      throw new GatewayError("NOT_FOUND", `Unknown resource: ${gatewayUri}`);
+    }
+    return {
+      connectionId: connection.id,
+      upstreamUri: "upstreamUri" in split ? split.upstreamUri : split.upstreamName,
+    };
+  }
+
+  private async visibleConnections(
+    session: DownstreamSessionHandle,
+  ): Promise<UpstreamConnection[]> {
+    return this.deps.store.connections.listVisible(session.tenantId, session.userId);
+  }
+
+  private async requireVisibleConnection(
+    session: DownstreamSessionHandle,
+    connectionId: string,
+  ): Promise<UpstreamConnection> {
+    const connections = await this.visibleConnections(session);
+    const connection = connections.find((candidate) => candidate.id === connectionId);
+    if (!connection) {
+      this.deps.metrics.counter(Metric.TenantAccessDenied, { stage: "tool_routing" });
+      throw new GatewayError("FORBIDDEN", "This connection is not available to you");
+    }
+    return connection;
+  }
+
+  private async audit(
+    session: DownstreamSessionHandle,
+    tool: DiscoveredTool,
+    connection: UpstreamConnection,
+    operation: string,
+    args: unknown,
+    resultStatus: "OK" | "ERROR" | "DENIED",
+    started: number,
+    detail?: JsonObject,
+  ): Promise<void> {
+    await this.deps.audit.record({
+      tenantId: session.tenantId,
+      userId: session.userId,
+      downstreamSessionId: session.id,
+      connectionId: connection.id,
+      toolId: tool.id,
+      operation,
+      input: args,
+      resultStatus,
+      durationMs: this.deps.clock.now() - started,
+      detail: {
+        gatewayTool: tool.gatewayName,
+        upstreamTool: tool.upstreamName,
+        schemaHash: tool.schemaHash,
+        riskLevel: tool.riskLevel,
+        ...(detail ?? {}),
+      },
+    });
+  }
+}
+
+function readProgressToken(params: JsonObject): string | number | undefined {
+  const meta = params["_meta"];
+  if (!isRecord(meta)) return undefined;
+  const token = meta["progressToken"];
+  if (typeof token === "string" || typeof token === "number") return token;
+  return undefined;
+}

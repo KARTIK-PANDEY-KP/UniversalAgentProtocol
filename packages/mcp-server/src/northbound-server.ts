@@ -1,7 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import {
-  GatewayError,
   JsonRpcErrorCode,
   LATEST_PROTOCOL_VERSION,
   MCP_PROTOCOL_VERSION_HEADER,

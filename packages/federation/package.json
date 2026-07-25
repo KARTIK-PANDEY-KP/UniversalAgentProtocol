@@ -1,0 +1,23 @@
+{
+  "name": "@umg/federation",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "@umg/core": "workspace:*",
+    "@umg/mcp-client": "workspace:*",
+    "@umg/mcp-server": "workspace:*",
+    "@umg/oauth": "workspace:*",
+    "@umg/observability": "workspace:*",
+    "@umg/security": "workspace:*",
+    "@umg/storage": "workspace:*"
+  }
+}

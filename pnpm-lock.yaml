@@ -20,6 +20,30 @@ importers:
 
   packages/core: {}
 
+  packages/federation:
+    dependencies:
+      '@umg/core':
+        specifier: workspace:*
+        version: link:../core
+      '@umg/mcp-client':
+        specifier: workspace:*
+        version: link:../mcp-client
+      '@umg/mcp-server':
+        specifier: workspace:*
+        version: link:../mcp-server
+      '@umg/oauth':
+        specifier: workspace:*
+        version: link:../oauth
+      '@umg/observability':
+        specifier: workspace:*
+        version: link:../observability
+      '@umg/security':
+        specifier: workspace:*
+        version: link:../security
+      '@umg/storage':
+        specifier: workspace:*
+        version: link:../storage
+
   packages/mcp-client:
     dependencies:
       '@umg/core':
