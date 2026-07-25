@@ -114,6 +114,8 @@ DELETE /api/v1/connections/:id
 GET    /api/v1/tools
 POST   /api/v1/tools/:id
 POST   /api/v1/oauth-client-configurations
+GET    /api/v1/oauth-client-configurations
+DELETE /api/v1/oauth-client-configurations/:id
 POST   /api/v1/import
 GET    /api/v1/audit
 ```

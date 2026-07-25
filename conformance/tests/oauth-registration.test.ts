@@ -188,6 +188,43 @@ describe("OAuth client registration", () => {
     expect(upstream.authorizationServer.stats.registrations).toBe(1);
   });
 
+  it("lets an operator review and withdraw the credentials they configured", async () => {
+    const { gateway, upstream } = await scenario({
+      tokenEndpointAuthMethods: ["client_secret_basic"],
+    });
+    const created = await gateway.api("POST", "/api/v1/oauth-client-configurations", {
+      issuer: upstream.authorizationServer.issuer,
+      client_id: "portal-client",
+      client_secret: "portal-secret",
+      token_endpoint_auth_method: "client_secret_basic",
+    });
+    const id = String(created.body["id"]);
+
+    const listed = await gateway.api("GET", "/api/v1/oauth-client-configurations");
+    expect(listed.status).toBe(200);
+    const entries = listed.body["oauth_client_configurations"] as Record<
+      string,
+      unknown
+    >[];
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      id,
+      client_id: "portal-client",
+      has_client_secret: true,
+      has_initial_access_token: false,
+    });
+    // Reviewing configuration must not hand the secret back out.
+    expect(JSON.stringify(listed.body)).not.toContain("portal-secret");
+
+    expect((await gateway.api("DELETE", `/api/v1/oauth-client-configurations/${id}`)).status)
+      .toBe(204);
+    const afterDelete = await gateway.api("GET", "/api/v1/oauth-client-configurations");
+    expect(afterDelete.body["oauth_client_configurations"]).toEqual([]);
+    // Deleting something that is already gone says so rather than reporting success.
+    expect((await gateway.api("DELETE", `/api/v1/oauth-client-configurations/${id}`)).status)
+      .toBe(404);
+  });
+
   it("treats a connection without a refresh token as non-refreshable", async () => {
     const { gateway, upstream } = await scenario({
       supportsDcr: true,

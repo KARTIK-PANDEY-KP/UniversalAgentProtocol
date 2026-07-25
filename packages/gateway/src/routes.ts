@@ -384,6 +384,43 @@ export function registerRoutes(
     sendJson(res, 201, { id: record.id, issuer: record.issuer });
   });
 
+  /** Never includes the secret or the initial access token, only that one is held. */
+  router.get("/api/v1/oauth-client-configurations", async (req, res) => {
+    const principal = await requirePrincipal(req, res);
+    if (!principal) return;
+    const records = await store.preconfiguredClients.list(principal.tenantId);
+    sendJson(res, 200, {
+      oauth_client_configurations: records.map((record) => ({
+        id: record.id,
+        issuer: record.issuer,
+        client_id: record.clientId,
+        redirect_uri: record.redirectUri,
+        token_endpoint_auth_method: record.tokenEndpointAuthMethod,
+        scopes: record.scopes,
+        has_client_secret: record.clientSecretEncrypted !== null,
+        has_initial_access_token: record.initialAccessTokenEncrypted !== null,
+        created_at: record.createdAt,
+      })),
+    });
+  });
+
+  router.delete("/api/v1/oauth-client-configurations/:id", async (req, res, match) => {
+    const principal = await requirePrincipal(req, res);
+    if (!principal) return;
+    const removed = await store.preconfiguredClients.delete(
+      principal.tenantId,
+      match.params["id"] ?? "",
+    );
+    if (!removed) {
+      sendJson(res, 404, {
+        error: "not_found",
+        message: "No such OAuth client configuration",
+      });
+      return;
+    }
+    sendEmpty(res, 204);
+  });
+
   /** Bulk import used by the migration CLI. */
   router.post("/api/v1/import", async (req, res) => {
     const principal = await requirePrincipal(req, res);

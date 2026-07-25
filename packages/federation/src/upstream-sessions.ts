@@ -148,18 +148,11 @@ export class UpstreamSessionManager {
     downstreamSessionId: string,
     client: UpstreamMcpConnection,
   ): Promise<void> {
-    const sessionId = client.sessionId;
     await this.deps.store.upstreamSessions.upsert({
       id: newId("usess"),
       tenantId: connection.tenantId,
       connectionId: connection.id,
       downstreamSessionId,
-      upstreamSessionIdEncrypted: sessionId
-        ? await this.deps.vault.encrypt(
-            { tenantId: connection.tenantId, purpose: "upstream_session_id" },
-            sessionId,
-          )
-        : null,
       protocolVersion: client.protocolVersion ?? "unknown",
       capabilitiesJson: client.capabilities as Record<string, never>,
       status: "ACTIVE",

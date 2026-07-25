@@ -42,19 +42,16 @@ export interface ToolSyncResult {
 export interface TenantRepository {
   create(tenant: Tenant): Promise<Tenant>;
   get(id: string): Promise<Tenant | null>;
-  list(): Promise<Tenant[]>;
 }
 
 export interface UserRepository {
   create(user: User): Promise<User>;
   get(tenantId: string, id: string): Promise<User | null>;
-  findByExternalIdentity(identity: string): Promise<User | null>;
 }
 
 export interface MembershipRepository {
   upsert(membership: TenantMembership): Promise<TenantMembership>;
   get(tenantId: string, userId: string): Promise<TenantMembership | null>;
-  listByTenant(tenantId: string): Promise<TenantMembership[]>;
 }
 
 export interface DpopKeyRepository {
@@ -126,7 +123,6 @@ export interface ConnectionRepository {
 
 export interface TransactionRepository {
   create(record: OAuthTransaction): Promise<OAuthTransaction>;
-  get(id: string): Promise<OAuthTransaction | null>;
   findByStateHash(stateHash: string): Promise<OAuthTransaction | null>;
   /** Atomically marks a transaction used; false when already consumed. */
   consume(id: string, at: number): Promise<boolean>;
@@ -176,9 +172,7 @@ export interface PromptRepository {
 export interface DownstreamSessionRepository {
   create(record: DownstreamSession): Promise<DownstreamSession>;
   get(id: string): Promise<DownstreamSession | null>;
-  touch(id: string, at: number): Promise<void>;
   close(id: string): Promise<void>;
-  listActive(tenantId: string): Promise<DownstreamSession[]>;
 }
 
 export interface UpstreamSessionRepository {
@@ -187,7 +181,6 @@ export interface UpstreamSessionRepository {
     connectionId: string,
     downstreamSessionId: string,
   ): Promise<UpstreamSessionRecord | null>;
-  close(id: string): Promise<void>;
   closeByDownstream(downstreamSessionId: string): Promise<void>;
   closeByConnection(connectionId: string): Promise<void>;
 }

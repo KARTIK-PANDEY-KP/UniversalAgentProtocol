@@ -28,7 +28,7 @@ describe("MCP transport", () => {
     return gateway;
   }
 
-  it("talks to a stateful Streamable HTTP server and carries the session id", async () => {
+  it("talks to a stateful Streamable HTTP server and records what it negotiated", async () => {
     const upstream = await startProtectedUpstream({
       authorizationServer: { supportsDcr: true },
       mcpServer: { stateful: true, tools: [{ name: "ping" }] },
@@ -44,9 +44,14 @@ describe("MCP transport", () => {
       connection.connection_id,
       CATALOGUE_SESSION,
     );
-    expect(session?.upstreamSessionIdEncrypted).toBeTypeOf("string");
-    // The upstream session id is credential-like and must be stored encrypted.
-    expect(session?.upstreamSessionIdEncrypted).not.toContain("sess_");
+    expect(session?.status).toBe("ACTIVE");
+    expect(session?.protocolVersion).not.toBe("unknown");
+    // The upstream's own session handle is credential-like, so it stays with
+    // the live client rather than being copied into the database.
+    const stored = JSON.stringify(session);
+    for (const id of upstream.mcpServer.sessionIds) {
+      expect(stored).not.toContain(id);
+    }
   });
 
   it("connects to a stateless server that issues no session id", async () => {

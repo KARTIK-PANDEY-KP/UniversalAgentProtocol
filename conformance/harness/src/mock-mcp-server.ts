@@ -167,6 +167,11 @@ export class MockMcpServer {
     return this.sessions.size;
   }
 
+  /** The session ids this server handed out, so a test can look for leaks. */
+  get sessionIds(): string[] {
+    return [...this.sessions.keys()];
+  }
+
   async start(): Promise<string> {
     await this.fixture.start();
     return this.url;

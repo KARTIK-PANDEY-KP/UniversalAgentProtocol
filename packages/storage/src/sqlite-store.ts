@@ -220,14 +220,11 @@ export class SqliteGatewayStore implements GatewayStore {
     this.tenants = {
       create: async (tenant) => tenantTable.insert(tenant),
       get: async (id) => tenantTable.findOne({ id }),
-      list: async () => tenantTable.findMany({}, "created_at"),
     };
 
     this.users = {
       create: async (user) => userTable.insert(user),
       get: async (tenantId, id) => userTable.findOne({ id, tenant_id: tenantId }),
-      findByExternalIdentity: async (identity) =>
-        userTable.findOne({ external_identity: identity }),
     };
 
     this.memberships = {
@@ -245,8 +242,6 @@ export class SqliteGatewayStore implements GatewayStore {
       },
       get: async (tenantId, userId) =>
         membershipTable.findOne({ tenant_id: tenantId, user_id: userId }),
-      listByTenant: async (tenantId) =>
-        membershipTable.findMany({ tenant_id: tenantId }, "created_at"),
     };
 
     this.dpopKeys = {
@@ -341,7 +336,6 @@ export class SqliteGatewayStore implements GatewayStore {
 
     this.transactions = {
       create: async (record) => transactionTable.insert(record),
-      get: async (id) => transactionTable.findOne({ id }),
       findByStateHash: async (stateHash) =>
         transactionTable.findOne({ state_hash: stateHash }),
       consume: async (id, at) => {
@@ -418,14 +412,9 @@ export class SqliteGatewayStore implements GatewayStore {
     this.downstreamSessions = {
       create: async (record) => downstreamTable.insert(record),
       get: async (id) => downstreamTable.findOne({ id }),
-      touch: async (id, at) => {
-        downstreamTable.update({ id }, { lastSeenAt: at });
-      },
       close: async (id) => {
         downstreamTable.update({ id }, { status: "CLOSED" });
       },
-      listActive: async (tenantId) =>
-        downstreamTable.findMany({ tenant_id: tenantId, status: "ACTIVE" }, "created_at"),
     };
 
     this.upstreamSessions = {
@@ -437,9 +426,6 @@ export class SqliteGatewayStore implements GatewayStore {
           downstream_session_id: downstreamSessionId,
           status: "ACTIVE",
         }),
-      close: async (id) => {
-        upstreamTable.update({ id }, { status: "CLOSED" });
-      },
       closeByDownstream: async (downstreamSessionId) => {
         upstreamTable.delete({ downstream_session_id: downstreamSessionId });
       },

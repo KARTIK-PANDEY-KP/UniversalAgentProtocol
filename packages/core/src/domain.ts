@@ -245,7 +245,13 @@ export interface UpstreamSessionRecord {
   tenantId: string;
   connectionId: string;
   downstreamSessionId: string;
-  upstreamSessionIdEncrypted: string | null;
+  /**
+   * The upstream's own session id is deliberately not recorded. It is a live
+   * session handle, it lives with the client object that owns it, and nothing
+   * could resume it later: the downstream session it belongs to is in-process
+   * too, so it dies with the same restart. Keeping a copy at rest would be a
+   * credential nothing reads.
+   */
   protocolVersion: string;
   capabilitiesJson: JsonObject;
   status: "ACTIVE" | "CLOSED";

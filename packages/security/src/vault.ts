@@ -20,10 +20,7 @@ export type CredentialPurpose =
   | "client_secret"
   | "registration_access_token"
   | "pkce_verifier"
-  | "upstream_session_id"
   | "static_headers"
-  | "gateway_api_key"
-  | "signing_key"
   | "dpop_key";
 
 export interface EncryptionContext {

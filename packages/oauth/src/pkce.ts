@@ -16,7 +16,3 @@ export function createPkcePair(): PkcePair {
   const verifier = randomBytes(32).toString("base64url");
   return { verifier, challenge: sha256Base64Url(verifier), method: "S256" };
 }
-
-export function verifyPkce(verifier: string, challenge: string): boolean {
-  return sha256Base64Url(verifier) === challenge;
-}

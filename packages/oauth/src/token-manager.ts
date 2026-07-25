@@ -389,7 +389,7 @@ export class OAuthTokenManager {
     tenantId: string,
     metadata: AuthorizationServerMetadata,
   ): Promise<void> {
-    const connection = await this.deps.store.connections.getUnscoped(connectionId);
+    const connection = await this.deps.store.connections.get(tenantId, connectionId);
     if (!connection) return;
     if (!supportsDpop(metadata)) {
       if (connection.dpopKeyReference) {
