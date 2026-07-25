@@ -149,11 +149,19 @@ describe("tool federation", () => {
     const connection = await gateway.createConnection(server.url, { alias: "up" });
     expect(connection.tool_count).toBe(3);
 
-    server.setTools([
-      { name: "stable" },
-      { name: "reshaped", inputSchema: { type: "object", properties: { b: { type: "number" } } } },
-      { name: "fresh" },
-    ]);
+    // Changed quietly, so the refresh below is what discovers the difference
+    // and the diff it reports is the diff being asserted on.
+    server.setTools(
+      [
+        { name: "stable" },
+        {
+          name: "reshaped",
+          inputSchema: { type: "object", properties: { b: { type: "number" } } },
+        },
+        { name: "fresh" },
+      ],
+      false,
+    );
 
     const { body } = await gateway.api(
       "POST",
@@ -191,6 +199,24 @@ describe("tool federation", () => {
         (notification) => notification.method === McpMethod.ToolListChanged,
       ),
     );
+    await client.close();
+  });
+
+  it("rediscovers a catalogue the upstream says has changed", async () => {
+    const gateway = await newGateway();
+    const server = await openMcpServer({ tools: [{ name: "one" }] });
+    await gateway.createConnection(server.url, { alias: "up" });
+
+    const client = await connectedClient(gateway);
+    await client.openStream();
+
+    // Announced, not refreshed. Forwarding the announcement alone would send
+    // the client back for a list the gateway had not itself re-read.
+    server.setTools([{ name: "one" }, { name: "two" }]);
+    await waitFor(async () =>
+      (await client.listTools()).some((tool) => tool.name === "up.two"),
+    );
+    await waitFor(() => countOf(client, McpMethod.ToolListChanged) >= 1);
     await client.close();
   });
 

@@ -275,6 +275,12 @@ export class Gateway {
         "Tools are named alias.tool and are federated from the remote MCP servers connected to this gateway.",
       lookupSession: (sessionId) => northboundRef?.getSession(sessionId),
       sessionsForTenant: (tenantId) => northboundRef?.sessionsForTenant(tenantId) ?? [],
+      resyncCatalogue: async (tenantId, connectionId) => {
+        const record = await store.connections.get(tenantId, connectionId);
+        // Gone between the announcement and here: nothing left to rediscover.
+        if (!record) return;
+        await connections.syncCatalogue(record);
+      },
     });
     handlerRef = handler;
 

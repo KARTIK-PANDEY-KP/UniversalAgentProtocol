@@ -66,6 +66,12 @@ export interface GatewayHandlerDeps {
   lookupSession(sessionId: string): DownstreamSessionHandle | undefined;
   /** All live sessions for a tenant, used for list-changed fan-out. */
   sessionsForTenant(tenantId: string): DownstreamSessionHandle[];
+  /**
+   * Rediscovers one connection's catalogue, called when its upstream announces
+   * that the catalogue moved. Supplied by the composition root rather than
+   * imported, so the handler does not depend on the control plane it serves.
+   */
+  resyncCatalogue?(tenantId: string, connectionId: string): Promise<void>;
 }
 
 const LIST_CHANGED_METHODS = new Set<string>([
@@ -112,6 +118,13 @@ export class GatewayMcpHandler implements McpServerHandler {
    * that is dropped and reopened is told afresh and nothing needs sweeping.
    */
   private readonly logLevelApplied = new WeakMap<UpstreamMcpConnection, McpLogLevel>();
+
+  /**
+   * Connections with a rediscovery already running, and whether another change
+   * arrived while it ran. An upstream that rewrites its catalogue announces it
+   * once per list, and three announcements should not mean three discoveries.
+   */
+  private readonly resyncing = new Map<string, { repeat: boolean }>();
 
   private readonly pageSize: number;
 
@@ -361,6 +374,44 @@ export class GatewayMcpHandler implements McpServerHandler {
   }
 
   /**
+   * Rediscovers a connection's catalogue in the background, at most one at a
+   * time per connection. A change announced while a discovery is running is
+   * not necessarily visible to it, so one more run is queued rather than
+   * dropped.
+   */
+  private scheduleResync(context: UpstreamMessageContext): void {
+    const resync = this.deps.resyncCatalogue;
+    if (!resync) return;
+
+    const running = this.resyncing.get(context.connectionId);
+    if (running) {
+      running.repeat = true;
+      return;
+    }
+
+    const state = { repeat: false };
+    this.resyncing.set(context.connectionId, state);
+    void (async () => {
+      do {
+        state.repeat = false;
+        try {
+          await resync(context.tenantId, context.connectionId);
+        } catch (error) {
+          // A failed rediscovery leaves the previous catalogue in place, which
+          // is stale but usable; the periodic worker sync tries again.
+          this.deps.logger.warn("Rediscovery after an upstream change failed", {
+            connectionId: context.connectionId,
+            alias: context.alias,
+            error: (error as Error).message,
+          });
+        }
+      } while (state.repeat);
+    })().finally(() => {
+      this.resyncing.delete(context.connectionId);
+    });
+  }
+
+  /**
    * Forwards a notification that arrived on an upstream session to the single
    * downstream session responsible for it. Notifications are never broadcast
    * across sessions.
@@ -372,6 +423,10 @@ export class GatewayMcpHandler implements McpServerHandler {
     // A catalogue change concerns everyone connected to this tenant, not just
     // the session that happened to be holding the upstream connection open.
     if (LIST_CHANGED_METHODS.has(notification.method)) {
+      // Forwarding alone would tell clients to re-read a catalogue the gateway
+      // has not re-read itself, so they would fetch the same stale list. The
+      // rediscovery announces its own diff once it lands.
+      this.scheduleResync(context);
       this.broadcast(context.tenantId, notification.method);
       return;
     }
