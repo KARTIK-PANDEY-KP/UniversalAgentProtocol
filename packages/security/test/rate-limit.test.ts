@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { GatewayError } from "@umg/core";
 
-import { RateLimiter } from "../src/rate-limit.js";
+import { RateLimiter } from "@umg/security";
 
 describe("RateLimiter", () => {
   function limiter(limit: number, burst?: number) {

@@ -40,6 +40,7 @@ function connection(overrides: Partial<UpstreamConnection> = {}): UpstreamConnec
     oauthClientRegistrationId: null,
     alias: "example",
     grantedScopes: ["read"],
+    requestedScopes: ["read"],
     accessTokenEncrypted: "enc-a1",
     refreshTokenEncrypted: "enc-r1",
     staticHeadersEncrypted: null,
