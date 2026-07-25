@@ -154,6 +154,53 @@ describe("background worker", () => {
     await client.close();
   });
 
+  it("admits one catalogue writer per connection", async () => {
+    // Rediscovery reads the stored catalogue and then writes back what it did
+    // not find there, so two runs interleaved insert the same tool twice and
+    // the unique index on (connection_id, upstream_name) refuses the second.
+    // An upstream announcing a change while the scheduled sweep is mid-pass is
+    // exactly two runs, and they interleave wherever a store read is a real
+    // round trip — which is every store but an in-process SQLite one.
+    const server = new MockMcpServer({ requireAuth: false, tools: [{ name: "one" }] });
+    await server.start();
+    started.push(server);
+    const gateway = await newGateway();
+    const created = await gateway.createConnection(server.url, { alias: "up" });
+    const record = await gateway.services.store.connections.getUnscoped(
+      created.connection_id,
+    );
+    if (!record) throw new Error("The connection was not stored");
+
+    server.setTools([{ name: "one" }, { name: "two" }], false);
+
+    let releaseHolder!: () => void;
+    const holderDone = new Promise<void>((resolve) => {
+      releaseHolder = resolve;
+    });
+    const holder = gateway.services.store.locks.withLock(
+      `catalogue-sync:${record.id}`,
+      async () => holderDone,
+      { leaseMs: 30_000 },
+    );
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    let finished = false;
+    const sync = gateway.services.connections
+      .syncCatalogue(record)
+      .then((result) => {
+        finished = true;
+        return result;
+      });
+
+    // Long enough for the upstream round trips, which happen before the lock.
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(finished).toBe(false);
+
+    releaseHolder();
+    await holder;
+    expect((await sync).added).toEqual(["up.two"]);
+  });
+
   it("degrades one unreachable connection without abandoning the rest", async () => {
     const healthy = new MockMcpServer({ requireAuth: false, tools: [{ name: "list_ok" }] });
     await healthy.start();

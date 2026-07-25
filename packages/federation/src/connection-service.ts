@@ -526,12 +526,25 @@ export class ConnectionService {
         lastSeenAt: started,
       }));
 
-      const sync = await this.deps.store.tools.sync(connection.id, toolRecords, started);
-      const resourcesChanged = await this.deps.store.resources.sync(
-        connection.id,
-        resourceRecords,
+      // One catalogue writer per connection. Each of these three reads what is
+      // stored and then writes what is not, so two of them interleaved insert
+      // the same tool twice and the unique index on
+      // (connection_id, upstream_name) rejects the second. A scheduled resync
+      // landing on a connection a live request is already syncing is precisely
+      // that pair, and it is only ever a rewrite of the same catalogue, so
+      // waiting for the other writer costs nothing but the wait.
+      const { sync, resourcesChanged, promptsChanged } = await this.deps.store.locks.withLock(
+        `catalogue-sync:${connection.id}`,
+        async () => ({
+          sync: await this.deps.store.tools.sync(connection.id, toolRecords, started),
+          resourcesChanged: await this.deps.store.resources.sync(
+            connection.id,
+            resourceRecords,
+          ),
+          promptsChanged: await this.deps.store.prompts.sync(connection.id, promptRecords),
+        }),
+        { leaseMs: 30_000, waitMs: 20_000 },
       );
-      const promptsChanged = await this.deps.store.prompts.sync(connection.id, promptRecords);
 
       if (sync.changed.length > 0) {
         this.deps.metrics.counter(Metric.McpToolSchemaChanged, {
