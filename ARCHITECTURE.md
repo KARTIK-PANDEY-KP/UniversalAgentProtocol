@@ -163,6 +163,16 @@ registry every feature wants to edit. It survives because it is kept to
 routing: parse, authorize, delegate, serialise. A handler with logic in it is
 logic in the wrong module, and that is a review comment, not a lint rule.
 
+Each module's `src/index.ts` is the other one. A barrel is a file every new
+export touches, which is the shape that causes merge conflicts. It is accepted
+here because rule 2 needs a single public interface, and because the file
+holds nothing but re-export lines: two branches adding one each conflict
+textually at worst, never semantically. Naming what to export from a file
+rather than taking all of it is fine, and is how a module keeps an internal
+helper internal. A barrel that grows anything else — a rename, a constant, a
+type alias, a conditional — has started being code, and that code belongs in a
+file of its own.
+
 ## Where does my code go?
 
 | You are… | It goes in |
