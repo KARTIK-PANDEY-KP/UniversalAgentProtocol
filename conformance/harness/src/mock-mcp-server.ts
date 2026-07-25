@@ -107,6 +107,10 @@ export interface McpServerStats {
   notifications: string[];
   /** The most recent level a client set through `logging/setLevel`. */
   logLevel: string | null;
+  /** How many times a client has opened the server-to-client GET stream. */
+  serverStreamOpens: number;
+  /** The `Last-Event-ID` on each of those opens, null when there was none. */
+  resumedFrom: (string | null)[];
 }
 
 interface Session {
@@ -153,6 +157,8 @@ export class MockMcpServer {
     cancellations: [],
     notifications: [],
     logLevel: null,
+    serverStreamOpens: 0,
+    resumedFrom: [],
   };
 
   constructor(private readonly options: MockMcpServerOptions = {}) {
@@ -224,6 +230,16 @@ export class MockMcpServer {
   /** Drops every session so the next request is answered with HTTP 404. */
   expireSessions(): void {
     this.sessions.clear();
+  }
+
+  /**
+   * Ends every server-to-client stream without ending the session, which is
+   * what a proxy timing out an idle connection looks like from the client.
+   */
+  dropServerStreams(): void {
+    for (const stream of this.openStreams) stream.end();
+    this.openStreams.clear();
+    for (const session of this.sessions.values()) session.stream = null;
   }
 
   failNextRequests(count: number, status = 500): void {
@@ -447,6 +463,9 @@ export class MockMcpServer {
         json(res, 404, { error: "unknown_session" });
         return;
       }
+      this.stats.serverStreamOpens += 1;
+      const resumeFrom = request.headers["last-event-id"];
+      this.stats.resumedFrom.push(typeof resumeFrom === "string" ? resumeFrom : null);
       this.openEventStream(res);
       this.openStreams.add(res);
       if (session) session.stream = res;
@@ -858,7 +877,12 @@ function failure(
   return { jsonrpc: JSONRPC_VERSION, id, error: { code, message } };
 }
 
+/** Monotonic across the process, which is all a client needs to resume from. */
+let nextSseEventId = 1;
+
 function writeSseEvent(res: ServerResponse, message: unknown): void {
   if (res.writableEnded) return;
-  res.write(`event: message\ndata: ${JSON.stringify(message)}\n\n`);
+  const id = nextSseEventId;
+  nextSseEventId += 1;
+  res.write(`id: ${id}\nevent: message\ndata: ${JSON.stringify(message)}\n\n`);
 }

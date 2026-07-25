@@ -74,6 +74,9 @@ export class UpstreamMcpConnection {
   private nextId = 1;
   private initializeResult: McpInitializeResult | null = null;
   private negotiatedVersion: string | null = null;
+  /** In-flight connect and re-initialize, so concurrent callers share one. */
+  private connecting: Promise<McpTransport> | null = null;
+  private recreating: Promise<void> | null = null;
 
   constructor(private readonly options: UpstreamConnectionOptions) {}
 
@@ -203,9 +206,10 @@ export class UpstreamMcpConnection {
   }
 
   async close(): Promise<void> {
-    await this.transport?.close();
+    const transport = this.transport ?? (await this.connecting?.catch(() => null));
     this.transport = null;
     this.initializeResult = null;
+    await transport?.close();
   }
 
   /** Sends a one-way notification, used for the client-side notifications we relay. */
@@ -246,11 +250,21 @@ export class UpstreamMcpConnection {
     }
   }
 
+  /**
+   * Shared by every caller that discovered the session had expired. Without
+   * this, a burst of concurrent calls each tears down the session the others
+   * just built, and the upstream sees a stampede of initializes.
+   */
   private async recreateSession(): Promise<void> {
-    await this.transport?.close().catch(() => undefined);
-    this.transport = null;
-    this.initializeResult = null;
-    await this.initialize();
+    this.recreating ??= (async () => {
+      await this.transport?.close().catch(() => undefined);
+      this.transport = null;
+      this.initializeResult = null;
+      await this.initialize();
+    })().finally(() => {
+      this.recreating = null;
+    });
+    return this.recreating;
   }
 
   private async dispatch(
@@ -318,8 +332,20 @@ export class UpstreamMcpConnection {
     return isRecord(response.result) ? toJsonObject(response.result) : {};
   }
 
+  /**
+   * One transport per connection, even under concurrent first use. The legacy
+   * transport opens a stream while connecting, so two callers racing here would
+   * leave one stream open with nothing reading it and one session unclosed.
+   */
   private async ensureTransport(): Promise<McpTransport> {
     if (this.transport) return this.transport;
+    this.connecting ??= this.openTransport().finally(() => {
+      this.connecting = null;
+    });
+    return this.connecting;
+  }
+
+  private async openTransport(): Promise<McpTransport> {
     const hooks: TransportHooks = this.options.hooks ?? {};
     if (this.options.transportKind === "HTTP_SSE") {
       const transport = new HttpSseTransport({

@@ -52,6 +52,11 @@ export class StreamableHttpTransport implements McpTransport {
   private session: string | null = null;
   private serverStream: AbortController | null = null;
   private closed = false;
+  /** Every request still on the wire, so closing does not leave one hanging. */
+  private readonly inFlight = new Set<AbortController>();
+  /** Last event id the server stream delivered, for resuming after a drop. */
+  private lastServerEventId: string | null = null;
+  private serverStreamAttempt = 0;
 
   constructor(private readonly options: StreamableHttpOptions) {}
 
@@ -105,7 +110,13 @@ export class StreamableHttpTransport implements McpTransport {
     if (this.serverStream || this.closed) return;
     const controller = new AbortController();
     this.serverStream = controller;
-    const headers = await this.buildHeaders("GET", { accept: SSE_CONTENT_TYPE });
+
+    const extra: Record<string, string> = { accept: SSE_CONTENT_TYPE };
+    // RFC-style SSE resumption: the server replays what we missed rather than
+    // starting again, so a dropped connection does not lose notifications.
+    if (this.lastServerEventId) extra["last-event-id"] = this.lastServerEventId;
+    const headers = await this.buildHeaders("GET", extra);
+
     let response: SafeResponse;
     try {
       response = await this.options.fetcher.request({
@@ -122,8 +133,11 @@ export class StreamableHttpTransport implements McpTransport {
       this.options.logger.debug("Upstream does not provide a server stream", {
         error: (error as Error).message,
       });
+      this.scheduleServerStreamRetry();
       return;
     }
+    // 405 and 404 are the server saying it has no stream to give, which is a
+    // permanent answer; anything else may be transient and is worth retrying.
     if (response.status === 405 || response.status === 404) {
       response.discard();
       this.serverStream = null;
@@ -132,20 +146,46 @@ export class StreamableHttpTransport implements McpTransport {
     if (response.status !== 200) {
       response.discard();
       this.serverStream = null;
+      this.scheduleServerStreamRetry();
       return;
     }
-    void this.consumeServerStream(response).catch((error: unknown) => {
-      if (this.closed) return;
-      this.options.logger.debug("Upstream server stream ended", {
-        error: (error as Error).message,
+
+    this.serverStreamAttempt = 0;
+    void this.consumeServerStream(response)
+      .catch((error: unknown) => {
+        if (this.closed) return;
+        this.options.logger.debug("Upstream server stream ended", {
+          error: (error as Error).message,
+        });
+      })
+      .finally(() => {
+        // A stream that ends and is never reopened means notifications stop
+        // arriving with nothing to say so.
+        if (this.serverStream === controller) this.serverStream = null;
+        this.scheduleServerStreamRetry();
       });
-    });
+  }
+
+  /** Reopens the server stream after a drop, backing off on repeated failure. */
+  private scheduleServerStreamRetry(): void {
+    if (this.closed || this.serverStream) return;
+    const attempt = this.serverStreamAttempt;
+    this.serverStreamAttempt = Math.min(attempt + 1, 6);
+    const delay = Math.min(30_000, 500 * 2 ** attempt);
+    const timer = setTimeout(() => {
+      void this.openServerStream().catch(() => undefined);
+    }, delay);
+    timer.unref?.();
   }
 
   async close(): Promise<void> {
     this.closed = true;
     this.serverStream?.abort();
     this.serverStream = null;
+    // A request still on the wire would otherwise wait out its timeout against
+    // a session this call is about to delete.
+    for (const controller of this.inFlight.values()) controller.abort();
+    this.inFlight.clear();
     if (!this.session) return;
     try {
       const headers = await this.buildHeaders("DELETE", { accept: JSON_CONTENT_TYPE });
@@ -174,6 +214,19 @@ export class StreamableHttpTransport implements McpTransport {
       accept: `${JSON_CONTENT_TYPE}, ${SSE_CONTENT_TYPE}`,
       "content-type": JSON_CONTENT_TYPE,
     });
+    // Tracked so close() can end it. The caller's own signal is chained in
+    // rather than replaced, so a downstream cancellation still reaches here.
+    const controller = new AbortController();
+    if (options.signal) {
+      if (options.signal.aborted) controller.abort();
+      else
+        options.signal.addEventListener("abort", () => controller.abort(), {
+          once: true,
+        });
+    }
+    if (this.closed) controller.abort();
+    this.inFlight.add(controller);
+
     const requestOptions: Parameters<SafeFetcher["request"]>[0] = {
       url: this.options.url,
       method: "POST",
@@ -181,13 +234,19 @@ export class StreamableHttpTransport implements McpTransport {
       body: JSON.stringify(message),
       followRedirects: false,
       stream: true,
+      signal: controller.signal,
       timeoutMs: options.timeoutMs ?? this.options.requestTimeoutMs ?? 60_000,
     };
-    if (options.signal) requestOptions.signal = options.signal;
     if (this.options.maxResponseBytes !== undefined) {
       requestOptions.maxResponseBytes = this.options.maxResponseBytes;
     }
-    const response = await this.options.fetcher.request(requestOptions);
+
+    let response: SafeResponse;
+    try {
+      response = await this.options.fetcher.request(requestOptions);
+    } finally {
+      this.inFlight.delete(controller);
+    }
 
     const issuedSession = response.headers[MCP_SESSION_HEADER];
     if (issuedSession) this.session = issuedSession;
@@ -253,6 +312,7 @@ export class StreamableHttpTransport implements McpTransport {
   private async consumeServerStream(response: SafeResponse): Promise<void> {
     try {
       for await (const event of readSseEvents(response.body)) {
+        if (event.id !== undefined) this.lastServerEventId = event.id;
         const payload = safeJsonParse(event.data);
         const messages = Array.isArray(payload) ? payload : [payload];
         for (const message of messages) this.dispatch(message);
