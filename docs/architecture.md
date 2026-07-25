@@ -99,6 +99,22 @@ explicitly, registers the HTTP routes, and hosts the background worker.
 8. The result is size-checked, audited and returned. Only the result crosses
    back down; the token never does.
 
+A call in flight can be stopped from either end. A `notifications/cancelled`
+naming the request aborts it, and so does the client simply hanging up. Either
+way the abort propagates to the upstream call, which sends its own
+cancellation onward, so the far end stops working rather than being quietly
+abandoned. A cancellation that loses the race and arrives after the response is
+ignored, which is what the specification asks for.
+
+Requests the upstream initiates — `sampling/createMessage`,
+`elicitation/create`, `roots/list` — travel the same path in reverse. They are
+routed to the one downstream session that triggered the call, never broadcast,
+and are refused when gateway policy disallows the method or the connected
+client never advertised the capability. Resource subscriptions work the same
+way: the subscription is placed upstream under the real URI, and the
+`notifications/resources/updated` that comes back is rewritten to the
+namespaced URI the client knows.
+
 ### Adding an upstream
 
 `POST /api/v1/connections` canonicalizes the URL, probes the endpoint,

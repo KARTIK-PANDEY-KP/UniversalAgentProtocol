@@ -30,6 +30,8 @@ export interface ToolCallHooks {
   request(method: string, params: JsonObject): Promise<JsonRpcResponse>;
   /** True when the response is being streamed and can carry notifications. */
   streaming: boolean;
+  /** Settles when the caller cancels this request, so a handler can give up. */
+  cancelled: Promise<void>;
 }
 
 export interface MockToolDefinition {
@@ -94,6 +96,8 @@ export interface McpServerStats {
   toolCalls: number;
   requestsByMethod: Record<string, number>;
   authorizationHeadersSeen: string[];
+  /** Request ids named by the `notifications/cancelled` this server received. */
+  cancellations: (string | number)[];
 }
 
 interface Session {
@@ -120,6 +124,8 @@ export class MockMcpServer {
     string | number,
     (response: JsonRpcResponse) => void
   >();
+  /** Resolvers for handlers waiting to hear that their call was cancelled. */
+  private readonly cancelWaiters = new Map<string | number, () => void>();
   private tools: MockToolDefinition[];
   private resources: MockResourceDefinition[];
   private prompts: MockPromptDefinition[];
@@ -135,6 +141,7 @@ export class MockMcpServer {
     toolCalls: 0,
     requestsByMethod: {},
     authorizationHeadersSeen: [],
+    cancellations: [],
   };
 
   constructor(private readonly options: MockMcpServerOptions = {}) {
@@ -210,6 +217,15 @@ export class MockMcpServer {
 
   broadcast(notification: JsonRpcNotification): void {
     for (const stream of this.openStreams) writeSseEvent(stream, notification);
+  }
+
+  /** Tells subscribers that a resource changed, as a real server would. */
+  notifyResourceUpdated(uri: string): void {
+    this.broadcast({
+      jsonrpc: JSONRPC_VERSION,
+      method: McpMethod.ResourceUpdated,
+      params: { uri },
+    });
   }
 
   /**
@@ -419,6 +435,7 @@ export class MockMcpServer {
 
     const parsed = JSON.parse(request.body) as unknown;
     const messages = Array.isArray(parsed) ? parsed : [parsed];
+    for (const message of messages) this.noteCancellation(message);
 
     // Answers to server-initiated requests come back as plain POSTs.
     const responses = messages.filter(isResponse);
@@ -519,6 +536,7 @@ export class MockMcpServer {
     }
 
     const message = JSON.parse(request.body) as unknown;
+    this.noteCancellation(message);
     res.writeHead(202, { "content-length": 0 });
     res.end();
 
@@ -537,6 +555,20 @@ export class MockMcpServer {
       session.stream,
       await this.execute(message, introspection, session.stream),
     );
+  }
+
+  /**
+   * Records a `notifications/cancelled` and releases the handler waiting on
+   * it, which is how a real server learns it can stop working.
+   */
+  private noteCancellation(message: unknown): void {
+    if (typeof message !== "object" || message === null) return;
+    if ((message as { method?: unknown }).method !== McpMethod.Cancelled) return;
+    const requestId = (message as JsonRpcNotification).params?.["requestId"];
+    if (typeof requestId !== "string" && typeof requestId !== "number") return;
+    this.stats.cancellations.push(requestId);
+    this.cancelWaiters.get(requestId)?.();
+    this.cancelWaiters.delete(requestId);
   }
 
   private createSession(initialize: JsonRpcRequest | null): Session {
@@ -663,8 +695,12 @@ export class MockMcpServer {
     }
 
     const progressToken = (params["_meta"] as JsonObject | undefined)?.["progressToken"];
+    const cancelled = new Promise<void>((resolve) => {
+      this.cancelWaiters.set(request.id, resolve);
+    });
     const hooks: ToolCallHooks = {
       streaming: stream !== null,
+      cancelled,
       progress: (progress, total, message) => {
         if (!stream || progressToken === undefined) return;
         writeSseEvent(stream, {
@@ -717,6 +753,8 @@ export class MockMcpServer {
         JsonRpcErrorCode.InternalError,
         (error as Error).message,
       );
+    } finally {
+      this.cancelWaiters.delete(request.id);
     }
   }
 }

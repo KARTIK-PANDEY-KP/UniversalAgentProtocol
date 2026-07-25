@@ -9,6 +9,7 @@ import {
   type McpClientCapabilities,
   type McpImplementation,
   type McpTool,
+  type RequestId,
 } from "@umg/core";
 
 import { readSse } from "./sse-reader.js";
@@ -40,6 +41,8 @@ export class GatewayMcpClientError extends Error {
 export interface CallToolOptions {
   /** Requests progress notifications and receives them as they arrive. */
   onProgress?(params: JsonObject): void;
+  /** Receives the JSON-RPC id of the outgoing request, so it can be cancelled. */
+  onRequestId?(id: RequestId): void;
   stream?: boolean;
 }
 
@@ -166,6 +169,7 @@ export class GatewayMcpClient {
     options: CallToolOptions = {},
   ): Promise<JsonObject> {
     const request = this.build(method, params);
+    options.onRequestId?.(request.id);
     const streaming = options.stream ?? options.onProgress !== undefined;
     const response = await fetch(this.mcpUrl, {
       method: "POST",
@@ -192,6 +196,11 @@ export class GatewayMcpClient {
       );
     }
     return this.unwrap((await response.json()) as JsonRpcResponse);
+  }
+
+  /** Asks the gateway to stop working on a request it is still answering. */
+  async cancel(requestId: RequestId, reason = "Cancelled by the user"): Promise<void> {
+    await this.notify(McpMethod.Cancelled, { requestId, reason });
   }
 
   async notify(method: string, params: JsonObject): Promise<void> {

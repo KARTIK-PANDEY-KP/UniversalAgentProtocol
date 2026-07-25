@@ -52,6 +52,8 @@ export class DownstreamSession implements DownstreamSessionHandle {
   private streams = new Set<EventStreamWriter>();
   private readonly queued: JsonRpcNotification[] = [];
   private readonly pending = new Map<RequestId, PendingServerRequest>();
+  /** Requests the client is still waiting on, so it can cancel one by id. */
+  private readonly inFlight = new Map<RequestId, AbortController>();
   private nextRequestId = 1;
   private closedFlag = false;
 
@@ -138,6 +140,27 @@ export class DownstreamSession implements DownstreamSessionHandle {
     return result;
   }
 
+  beginRequest(id: RequestId, controller: AbortController): void {
+    this.inFlight.set(id, controller);
+  }
+
+  endRequest(id: RequestId): void {
+    this.inFlight.delete(id);
+  }
+
+  /**
+   * Aborts an in-flight request the client asked to cancel. Returns false when
+   * the request already finished, which is the race MCP explicitly tolerates:
+   * the cancellation is simply ignored.
+   */
+  cancelRequest(id: RequestId): boolean {
+    const controller = this.inFlight.get(id);
+    if (!controller) return false;
+    this.inFlight.delete(id);
+    controller.abort();
+    return true;
+  }
+
   /** Routes a JSON-RPC response the client posted back for a server request. */
   resolveResponse(response: JsonRpcResponse): boolean {
     const id = "id" in response ? response.id : null;
@@ -158,6 +181,8 @@ export class DownstreamSession implements DownstreamSessionHandle {
 
   close(): void {
     this.closedFlag = true;
+    for (const controller of this.inFlight.values()) controller.abort();
+    this.inFlight.clear();
     for (const pending of this.pending.values()) {
       clearTimeout(pending.timer);
       pending.reject(new GatewayError("NOT_FOUND", "Session closed"));

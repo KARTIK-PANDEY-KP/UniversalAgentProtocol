@@ -249,6 +249,7 @@ export class NorthboundMcpServer {
     for (const message of messages) {
       if (isJsonRpcResponse(message)) session.resolveResponse(message);
       else if (isJsonRpcNotification(message)) {
+        if (message.method === McpMethod.Cancelled) this.cancel(message, session);
         await this.options.handler
           .onNotification(message, session)
           .catch((error: unknown) => {
@@ -281,6 +282,24 @@ export class NorthboundMcpServer {
     sendJson(res, 200, responses.length === 1 ? responses[0] : responses);
   }
 
+  /**
+   * Aborts the request a `notifications/cancelled` names. The abort propagates
+   * to the upstream call, which sends its own cancellation onward, so work
+   * stops at the far end rather than merely being abandoned here.
+   */
+  private cancel(notification: JsonRpcNotification, session: DownstreamSession): void {
+    const requestId = notification.params?.["requestId"];
+    if (typeof requestId !== "string" && typeof requestId !== "number") return;
+    const cancelled = session.cancelRequest(requestId);
+    this.options.logger.debug("Downstream cancellation", {
+      sessionId: session.id,
+      requestId,
+      // A cancellation that arrives after the response is not an error; the
+      // client simply could not know it was already too late.
+      cancelled,
+    });
+  }
+
   private async respondViaStream(
     res: ServerResponse,
     session: DownstreamSession,
@@ -289,13 +308,13 @@ export class NorthboundMcpServer {
     const stream = openEventStream(res, {
       [MCP_SESSION_HEADER]: session.id,
     });
-    const controller = new AbortController();
-    res.on("close", () => controller.abort());
+    const disconnected = new AbortController();
+    res.on("close", () => disconnected.abort());
     try {
       for (const request of requests) {
         const response = await this.execute(request, session, {
           sendNotification: (notification) => stream.write(notification),
-          signal: controller.signal,
+          signal: disconnected.signal,
         });
         stream.write(response);
       }
@@ -304,14 +323,26 @@ export class NorthboundMcpServer {
     }
   }
 
+  /**
+   * Runs one request under a controller the client can abort by id. The
+   * enclosing signal, when there is one, aborts it too: a client that hangs up
+   * mid-stream has cancelled everything it was waiting for.
+   */
   private async execute(
     request: JsonRpcRequest,
     session: DownstreamSession,
     context?: RequestContext,
   ): Promise<JsonRpcResponse> {
-    const effective: RequestContext = context ?? {
-      sendNotification: (notification) => session.sendNotification(notification),
-      signal: new AbortController().signal,
+    const controller = new AbortController();
+    const abort = (): void => controller.abort();
+    context?.signal.addEventListener("abort", abort, { once: true });
+    session.beginRequest(request.id, controller);
+
+    const effective: RequestContext = {
+      sendNotification:
+        context?.sendNotification ??
+        ((notification) => session.sendNotification(notification)),
+      signal: controller.signal,
     };
     try {
       const result = await this.options.handler.onRequest(request, session, effective);
@@ -330,6 +361,9 @@ export class NorthboundMcpServer {
         gatewayError.message,
         gatewayError.data ?? null,
       );
+    } finally {
+      session.endRequest(request.id);
+      context?.signal.removeEventListener("abort", abort);
     }
   }
 

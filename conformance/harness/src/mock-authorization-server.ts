@@ -230,6 +230,16 @@ export class MockAuthorizationServer {
     for (const record of this.accessTokens.values()) record.expiresAt = 0;
   }
 
+  /**
+   * Expires every client secret this server issued. The grants survive; it is
+   * the gateway's own client identity that has gone stale.
+   */
+  expireClientSecrets(): void {
+    for (const client of this.clients.values()) {
+      if (client.clientSecret !== null) client.secretExpiresAt = 1;
+    }
+  }
+
   metadata(): Record<string, unknown> {
     const base: Record<string, unknown> = {
       issuer: this.issuer,
