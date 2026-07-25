@@ -259,6 +259,106 @@ describe("gateway security", () => {
       expect((failure as Error).message).toContain("Too many redirects");
     });
 
+    it("drops the credential when a redirect crosses to another origin", async () => {
+      const gateway = await newGateway({
+        config: { allowHttp: true, allowLoopback: true },
+      });
+
+      const seen: { authorization?: string; cookie?: string }[] = [];
+      const destination = new HttpFixture((request, res) => {
+        seen.push({
+          ...(typeof request.headers.authorization === "string"
+            ? { authorization: request.headers.authorization }
+            : {}),
+          ...(typeof request.headers.cookie === "string"
+            ? { cookie: request.headers.cookie }
+            : {}),
+        });
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: true }));
+      });
+      await destination.start();
+      started.push({ stop: () => destination.stop() });
+
+      const origin = new HttpFixture((request, res) => {
+        if (request.url.pathname === "/away") {
+          res.writeHead(302, { location: `${destination.baseUrl}/landed` });
+          res.end();
+          return;
+        }
+        // Same origin, so the credential is still ours to send.
+        res.writeHead(302, { location: `${origin.baseUrl}/here` });
+        res.end();
+      });
+      await origin.start();
+      started.push({ stop: () => origin.stop() });
+
+      await gateway.services.fetcher.getJson(`${origin.baseUrl}/away`, {
+        headers: {
+          authorization: "Bearer upstream-secret",
+          cookie: "session=upstream-secret",
+          accept: "application/json",
+        },
+      });
+
+      // An upstream that answers with a redirect chooses where the next request
+      // goes. It does not also get to choose who receives our token.
+      expect(seen).toHaveLength(1);
+      expect(seen[0]?.authorization).toBeUndefined();
+      expect(seen[0]?.cookie).toBeUndefined();
+    });
+
+    it("keeps the credential on a redirect that stays on one origin", async () => {
+      const gateway = await newGateway({
+        config: { allowHttp: true, allowLoopback: true },
+      });
+
+      const seen: (string | undefined)[] = [];
+      const fixture = new HttpFixture((request, res) => {
+        if (request.url.pathname === "/away") {
+          res.writeHead(302, { location: `${fixture.baseUrl}/landed` });
+          res.end();
+          return;
+        }
+        seen.push(
+          typeof request.headers.authorization === "string"
+            ? request.headers.authorization
+            : undefined,
+        );
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: true }));
+      });
+      await fixture.start();
+      started.push({ stop: () => fixture.stop() });
+
+      await gateway.services.fetcher.getJson(`${fixture.baseUrl}/away`, {
+        headers: { authorization: "Bearer upstream-secret" },
+      });
+
+      expect(seen).toEqual(["Bearer upstream-secret"]);
+    });
+
+    it("hands a caller that refused redirects the redirect itself", async () => {
+      const gateway = await newGateway({
+        config: { allowHttp: true, allowLoopback: true },
+      });
+      const fixture = new HttpFixture((_request, res) => {
+        res.writeHead(302, { location: "https://elsewhere.example.com/" });
+        res.end();
+      });
+      await fixture.start();
+      started.push({ stop: () => fixture.stop() });
+
+      const response = await gateway.services.fetcher.request({
+        url: `${fixture.baseUrl}/thing`,
+        followRedirects: false,
+      });
+      response.discard();
+
+      expect(response.status).toBe(302);
+      expect(response.headers["location"]).toBe("https://elsewhere.example.com/");
+    });
+
     it("rejects metadata served with the wrong content type", async () => {
       const gateway = await newGateway({
         config: { allowHttp: true, allowLoopback: true },

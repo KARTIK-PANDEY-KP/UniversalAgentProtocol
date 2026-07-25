@@ -91,6 +91,30 @@ class SsrfBlocked extends Error {
 }
 
 /**
+ * Headers that authenticate the gateway to one origin and must never reach
+ * another. An upstream that answers a request with a redirect chooses where
+ * the next request goes; without this it would also choose who receives the
+ * credential attached to it.
+ */
+const CREDENTIAL_HEADERS = new Set([
+  "authorization",
+  "proxy-authorization",
+  "cookie",
+  "dpop",
+  "mcp-session-id",
+]);
+
+function withoutCredentials(
+  headers: Record<string, string | undefined> | undefined,
+): Record<string, string | undefined> {
+  const kept: Record<string, string | undefined> = {};
+  for (const [key, value] of Object.entries(headers ?? {})) {
+    if (!CREDENTIAL_HEADERS.has(key.toLowerCase())) kept[key] = value;
+  }
+  return kept;
+}
+
+/**
  * Performs outbound HTTP for every user-influenced URL the gateway touches:
  * MCP endpoints, protected resource metadata, authorization server metadata,
  * registration endpoints and token endpoints. Address validation happens
@@ -113,30 +137,37 @@ export class SafeFetcher {
   }
 
   async request(options: SafeRequestOptions): Promise<SafeResponse> {
-    const maxRedirects = options.followRedirects === false ? 0 : this.policy.maxRedirects;
+    const follow = options.followRedirects !== false;
+    const method = (options.method ?? "GET").toUpperCase();
+    const redirectable = follow && (method === "GET" || method === "HEAD");
+
     let current = typeof options.url === "string" ? options.url : options.url.href;
+    let headers = options.headers;
     let hop = 0;
 
     for (;;) {
-      const response = await this.requestOnce(current, options);
+      const response = await this.requestOnce(current, options, headers);
       const location = response.headers["location"];
       const isRedirect =
         response.status >= 300 && response.status < 400 && location !== undefined;
-      const method = (options.method ?? "GET").toUpperCase();
-      const redirectable = method === "GET" || method === "HEAD";
-      if (!isRedirect || !redirectable || hop >= maxRedirects) {
-        if (isRedirect && redirectable && hop >= maxRedirects) {
-          response.discard();
-          throw new GatewayError(
-            "DISCOVERY_FAILED",
-            "Too many redirects while fetching metadata",
-          );
-        }
+
+      // A caller that asked not to follow wants the 3xx itself, and a POST is
+      // never replayed at a location the far end chose.
+      if (!isRedirect || !redirectable) {
         this.assertContentType(response, options);
         return response;
       }
+      if (hop >= this.policy.maxRedirects) {
+        response.discard();
+        throw new GatewayError("DISCOVERY_FAILED", `Too many redirects from ${current}`);
+      }
+
       response.discard();
-      current = new URL(location, current).href;
+      const next = new URL(location, current);
+      // Each hop is validated again by requestOnce; what it cannot recover is a
+      // credential already sent, so the credential is dropped at the boundary.
+      if (next.origin !== new URL(current).origin) headers = withoutCredentials(headers);
+      current = next.href;
       hop += 1;
     }
   }
@@ -183,6 +214,7 @@ export class SafeFetcher {
   private requestOnce(
     rawUrl: string,
     options: SafeRequestOptions,
+    requestHeaders: Record<string, string | undefined> | undefined,
   ): Promise<SafeResponse> {
     const url = parseAbsoluteUrl(rawUrl);
     if (url.protocol === "http:" && !this.policy.allowHttp) {
@@ -213,7 +245,7 @@ export class SafeFetcher {
     const timeoutMs = options.timeoutMs ?? this.policy.timeoutMs;
     const transport = url.protocol === "https:" ? httpsRequest : httpRequest;
     const headers: Record<string, string> = {};
-    for (const [key, value] of Object.entries(options.headers ?? {})) {
+    for (const [key, value] of Object.entries(requestHeaders ?? {})) {
       if (value !== undefined) headers[key] = value;
     }
     if (options.body !== undefined) {
