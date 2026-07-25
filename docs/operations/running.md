@@ -67,6 +67,7 @@ POST   /api/v1/connections/:id/authorize
 POST   /api/v1/connections/:id/reconnect
 POST   /api/v1/connections/:id/refresh
 POST   /api/v1/connections/:id/alias
+POST   /api/v1/connections/:id/enabled
 DELETE /api/v1/connections/:id
 GET    /api/v1/tools
 POST   /api/v1/tools/:id
@@ -153,7 +154,18 @@ waiting for the worker.
 If the tools are present upstream but hidden downstream, check policy: a tool
 classified `DESTRUCTIVE` without a `destructiveHint` annotation is withheld by
 default. `GET /api/v1/tools` shows every discovered tool with its risk level
-and enabled flag, and `POST /api/v1/tools/:id` toggles one.
+and enabled flag, and `POST /api/v1/tools/:id` toggles one. A connection whose
+status is `DISABLED` serves nothing at all; see below.
+
+### An upstream is misbehaving and has to stop now
+
+`POST /api/v1/connections/:id/enabled` with `{"enabled": false}` takes the
+connection out of service: its tools, resources and prompts disappear from
+every session, live upstream sessions are closed, and calls routed to it are
+refused. The OAuth grant is kept, so `{"enabled": true}` puts it back and
+re-runs discovery without sending the user through the provider's consent
+screen again. Use `DELETE /api/v1/connections/:id` when the grant itself should
+go.
 
 ### A tenant is being rate limited
 

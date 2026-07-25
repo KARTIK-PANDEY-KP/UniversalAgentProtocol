@@ -295,6 +295,18 @@ export function registerRoutes(
     sendJson(res, 200, toConnectionPayload(view, config.baseUrl));
   });
 
+  router.post("/api/v1/connections/:id/enabled", async (req, res, match) => {
+    const principal = await requirePrincipal(req, res);
+    if (!principal) return;
+    const body = parseJsonBody(await readBody(req, MAX_BODY));
+    const view = await connections.setEnabled(
+      principal,
+      match.params["id"] ?? "",
+      body["enabled"] === true,
+    );
+    sendJson(res, 200, toConnectionPayload(view, config.baseUrl));
+  });
+
   router.delete("/api/v1/connections/:id", async (req, res, match) => {
     const principal = await requirePrincipal(req, res);
     if (!principal) return;

@@ -442,7 +442,12 @@ export class ConnectionService {
       ]);
 
       const takenNames = new Set<string>();
-      const toolRecords: DiscoveredTool[] = tools.map((tool) => {
+      const toolRecords: DiscoveredTool[] = this.firstOfEach(
+        tools,
+        (tool) => tool.name,
+        connection,
+        "tools",
+      ).map((tool) => {
         const gatewayName = gatewayToolName(connection.alias, tool.name, takenNames);
         takenNames.add(gatewayName);
         const annotations = tool.annotations ? toJsonObject(tool.annotations) : null;
@@ -469,34 +474,46 @@ export class ConnectionService {
         };
       });
 
-      const resourceRecords: DiscoveredResource[] = [
-        ...resources.map((resource) => ({
-          id: newId("res"),
-          tenantId: connection.tenantId,
-          connectionId: connection.id,
-          upstreamUri: resource.uri,
-          gatewayUri: gatewayResourceUri(connection.alias, resource.uri),
-          name: resource.name,
-          description: resource.description ?? null,
-          mimeType: resource.mimeType ?? null,
-          isTemplate: false,
-          lastSeenAt: started,
-        })),
-        ...templates.map((template) => ({
-          id: newId("res"),
-          tenantId: connection.tenantId,
-          connectionId: connection.id,
-          upstreamUri: template.uriTemplate,
-          gatewayUri: gatewayResourceUri(connection.alias, template.uriTemplate),
-          name: template.name,
-          description: template.description ?? null,
-          mimeType: template.mimeType ?? null,
-          isTemplate: true,
-          lastSeenAt: started,
-        })),
-      ];
+      // Resources and templates share one table and one uniqueness rule, so
+      // they are deduplicated together rather than one list at a time.
+      const resourceRecords: DiscoveredResource[] = this.firstOfEach(
+        [
+          ...resources.map((resource) => ({
+            id: newId("res"),
+            tenantId: connection.tenantId,
+            connectionId: connection.id,
+            upstreamUri: resource.uri,
+            gatewayUri: gatewayResourceUri(connection.alias, resource.uri),
+            name: resource.name,
+            description: resource.description ?? null,
+            mimeType: resource.mimeType ?? null,
+            isTemplate: false,
+            lastSeenAt: started,
+          })),
+          ...templates.map((template) => ({
+            id: newId("res"),
+            tenantId: connection.tenantId,
+            connectionId: connection.id,
+            upstreamUri: template.uriTemplate,
+            gatewayUri: gatewayResourceUri(connection.alias, template.uriTemplate),
+            name: template.name,
+            description: template.description ?? null,
+            mimeType: template.mimeType ?? null,
+            isTemplate: true,
+            lastSeenAt: started,
+          })),
+        ],
+        (resource) => resource.upstreamUri,
+        connection,
+        "resources",
+      );
 
-      const promptRecords: DiscoveredPrompt[] = prompts.map((prompt) => ({
+      const promptRecords: DiscoveredPrompt[] = this.firstOfEach(
+        prompts,
+        (prompt) => prompt.name,
+        connection,
+        "prompts",
+      ).map((prompt) => ({
         id: newId("prm"),
         tenantId: connection.tenantId,
         connectionId: connection.id,
@@ -563,6 +580,37 @@ export class ConnectionService {
     }
   }
 
+  /**
+   * Keeps the first entry of each upstream identity. A server that lists the
+   * same tool twice is broken, but the gateway stores one row per upstream
+   * name, so passing the repeat along would fail the whole catalogue on a
+   * uniqueness violation and leave the connection with no tools at all.
+   */
+  private firstOfEach<T>(
+    items: readonly T[],
+    identity: (item: T) => string,
+    connection: UpstreamConnection,
+    kind: string,
+  ): T[] {
+    const seen = new Set<string>();
+    const kept: T[] = [];
+    for (const item of items) {
+      const key = identity(item);
+      if (seen.has(key)) {
+        this.deps.logger.warn("Upstream listed the same entry twice", {
+          connectionId: connection.id,
+          alias: connection.alias,
+          kind,
+          identity: clampText(key, 120),
+        });
+        continue;
+      }
+      seen.add(key);
+      kept.push(item);
+    }
+    return kept;
+  }
+
   async rename(
     actor: ControlPlaneActor,
     connectionId: string,
@@ -618,6 +666,77 @@ export class ConnectionService {
       resources: false,
       prompts: false,
     });
+  }
+
+  /**
+   * Takes a connection out of service, or puts it back. Disabling is the
+   * answer to an upstream that has started misbehaving: it stops serving
+   * immediately without discarding the grant, which disconnecting would, and
+   * which would cost the user another trip through the provider's consent
+   * screen to undo.
+   */
+  async setEnabled(
+    actor: ControlPlaneActor,
+    connectionId: string,
+    enabled: boolean,
+  ): Promise<ConnectionView> {
+    const connection = await this.requireVisible(actor, connectionId);
+    if (enabled === (connection.status !== "DISABLED")) {
+      return this.view(connection);
+    }
+
+    if (!enabled) {
+      const disabled = await this.deps.store.connections.update(connection.id, {
+        status: "DISABLED",
+      });
+      // Sessions already open would otherwise keep serving calls through a
+      // connection the operator has just taken away.
+      await this.deps.sessions.releaseConnection(connection.id);
+      this.deps.onCatalogueChanged?.(actor.tenantId, {
+        tools: true,
+        resources: true,
+        prompts: true,
+      });
+      await this.deps.audit.record({
+        tenantId: actor.tenantId,
+        userId: actor.userId,
+        connectionId: connection.id,
+        operation: "connection.disable",
+        resultStatus: "OK",
+        detail: { alias: connection.alias },
+      });
+      return this.view(disabled);
+    }
+
+    const restored = await this.deps.store.connections.update(connection.id, {
+      // What the connection was before it was disabled is not recorded, so it
+      // is re-derived from the credential it holds: an OAuth grant that cannot
+      // renew itself is worth saying so, because the user will have to
+      // re-authorize it, while a server that needed no OAuth is simply
+      // connected. A wrong guess is corrected by the sync below.
+      status:
+        connection.accessTokenEncrypted && !connection.refreshTokenEncrypted
+          ? "CONNECTED_NON_REFRESHABLE"
+          : "CONNECTED",
+    });
+    // The catalogue is as old as the outage, and the upstream may be gone. A
+    // failed sync leaves the connection DEGRADED, which is the truth.
+    await this.syncCatalogue(restored).catch((error: unknown) => {
+      this.deps.logger.warn("Re-enabled a connection but could not rediscover it", {
+        connectionId: connection.id,
+        alias: connection.alias,
+        error: clampText((error as Error).message, 200),
+      });
+    });
+    await this.deps.audit.record({
+      tenantId: actor.tenantId,
+      userId: actor.userId,
+      connectionId: connection.id,
+      operation: "connection.enable",
+      resultStatus: "OK",
+      detail: { alias: connection.alias },
+    });
+    return this.view(await this.reload(restored));
   }
 
   async disconnect(actor: ControlPlaneActor, connectionId: string): Promise<void> {

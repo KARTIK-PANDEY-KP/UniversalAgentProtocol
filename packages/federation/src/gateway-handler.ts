@@ -260,8 +260,13 @@ export class GatewayMcpHandler implements McpServerHandler {
       sessionId: session.id,
     });
     // The gateway tells every upstream it supports roots with `listChanged`,
-    // so it owes them the notification when the client's roots move.
-    if (notification.method === McpMethod.RootsListChanged) {
+    // so it owes them the notification when the client's roots move. When
+    // policy withholds roots it never made that promise, and telling a server
+    // its roots changed would only provoke a read it is not allowed.
+    if (
+      notification.method === McpMethod.RootsListChanged &&
+      this.deps.policy.allowsServerRequest(McpMethod.RootsList)
+    ) {
       await this.relayToUpstreams(session, McpMethod.RootsListChanged, {});
     }
   }
@@ -512,11 +517,7 @@ export class GatewayMcpHandler implements McpServerHandler {
 
   private async listTools(session: DownstreamSessionHandle): Promise<McpTool[]> {
     const connections = await this.visibleConnections(session);
-    const usable = new Set(
-      connections
-        .filter((connection) => connection.status !== "DISABLED")
-        .map((connection) => connection.id),
-    );
+    const usable = new Set(connections.map((connection) => connection.id));
     const tools = await this.deps.store.tools.listByTenant(session.tenantId);
     return tools
       .filter((tool) => tool.enabled && usable.has(tool.connectionId))
@@ -869,10 +870,19 @@ export class GatewayMcpHandler implements McpServerHandler {
     };
   }
 
+  /**
+   * The connections this session may be served from. A disabled connection is
+   * not one of them: it is excluded here rather than at each call site, so a
+   * new MCP method cannot forget to check.
+   */
   private async visibleConnections(
     session: DownstreamSessionHandle,
   ): Promise<UpstreamConnection[]> {
-    return this.deps.store.connections.listVisible(session.tenantId, session.userId);
+    const connections = await this.deps.store.connections.listVisible(
+      session.tenantId,
+      session.userId,
+    );
+    return connections.filter((connection) => connection.status !== "DISABLED");
   }
 
   private async requireVisibleConnection(

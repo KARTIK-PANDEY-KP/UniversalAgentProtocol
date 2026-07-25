@@ -308,6 +308,68 @@ describe("tool federation", () => {
     await client.close();
   });
 
+  it("takes a whole connection out of service and puts it back", async () => {
+    const gateway = await newGateway();
+    const server = await openMcpServer({
+      tools: [{ name: "run" }],
+      resources: [{ uri: "file:///a.txt", name: "a" }],
+      prompts: [{ name: "greet" }],
+    });
+    const connection = await gateway.createConnection(server.url, { alias: "up" });
+
+    const disabled = await gateway.api(
+      "POST",
+      `/api/v1/connections/${connection.connection_id}/enabled`,
+      { enabled: false },
+    );
+    expect(disabled.body["status"]).toBe("DISABLED");
+
+    // Disabling has to reach every surface, not only the tool list: a resource
+    // or a prompt still being served would keep the upstream reachable.
+    const client = await connectedClient(gateway);
+    expect(await client.listTools()).toEqual([]);
+    expect(await client.listResources()).toEqual([]);
+    expect(await client.listPrompts()).toEqual([]);
+    await expect(client.callTool("up.run")).rejects.toThrow();
+    await expect(client.readResource("up+file:///a.txt")).rejects.toThrow();
+    await expect(client.getPrompt("up/greet")).rejects.toThrow();
+
+    const enabled = await gateway.api(
+      "POST",
+      `/api/v1/connections/${connection.connection_id}/enabled`,
+      { enabled: true },
+    );
+    expect(enabled.body["status"]).toBe("CONNECTED");
+    expect((await client.listTools()).map((tool) => tool.name)).toEqual(["up.run"]);
+    await client.close();
+  });
+
+  it("serves the rest of a catalogue an upstream listed twice", async () => {
+    const gateway = await newGateway();
+    // A server repeating an entry is broken, but the gateway keeps one row per
+    // upstream name: passing the repeat through would fail the whole sync and
+    // leave the connection with nothing at all.
+    const server = await openMcpServer({
+      tools: [{ name: "twin" }, { name: "twin" }, { name: "other" }],
+      resources: [
+        { uri: "file:///a.txt", name: "a" },
+        { uri: "file:///a.txt", name: "a again" },
+      ],
+      prompts: [{ name: "greet" }, { name: "greet" }],
+    });
+    const connection = await gateway.createConnection(server.url, { alias: "up" });
+    expect(connection.status).toBe("CONNECTED");
+
+    const client = await connectedClient(gateway);
+    expect((await client.listTools()).map((tool) => tool.name).sort()).toEqual([
+      "up.other",
+      "up.twin",
+    ]);
+    expect(await client.listResources()).toHaveLength(1);
+    expect(await client.listPrompts()).toHaveLength(1);
+    await client.close();
+  });
+
   it("says so when asked to toggle a tool that does not exist", async () => {
     const gateway = await newGateway();
     const server = await openMcpServer({ tools: [{ name: "keep" }] });
