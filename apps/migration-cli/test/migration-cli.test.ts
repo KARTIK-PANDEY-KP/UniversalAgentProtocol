@@ -209,6 +209,18 @@ describe("discovery", () => {
     expect(result.skipped.some((entry) => entry.reason === "gateway")).toBe(true);
   });
 
+  it("reads a file once when the project directory is the home directory", async () => {
+    const box = await sandbox();
+    const paths: PathContext = { ...box.paths, cwd: box.home };
+
+    const result = await discover(paths, {});
+
+    const cursor = result.configs.filter((config) => config.location.clientId === "cursor");
+    expect(cursor).toHaveLength(1);
+    const github = result.servers.find((server) => server.canonicalUrl === GITHUB);
+    expect(github?.sources.filter((source) => source.clientId === "cursor")).toHaveLength(1);
+  });
+
   it("keeps going when one configuration file is corrupt", async () => {
     const box = await sandbox();
     await write(join(box.home, ".cursor", "mcp.json"), "{ not json");
@@ -320,6 +332,31 @@ describe("install", () => {
     expect(out.text.join("\n")).toContain("home/.cursor/mcp.json");
   });
 
+  it("leaves no trace of a client the user does not have", async () => {
+    const box = await sandbox();
+    await rm(join(box.home, ".cursor"), { recursive: true, force: true });
+    const out = capture();
+
+    await installCommand(contextFor(box, out), installOptions);
+
+    expect(await box.exists("home/.cursor/mcp.json")).toBe(false);
+    expect(out.text.join("\n")).toContain("does not appear to be installed");
+    // The clients that are installed still get configured.
+    expect(await box.read("home/.codex/config.toml")).toContain("universal-gateway");
+  });
+
+  it("configures a client the user names even without a trace of it", async () => {
+    const box = await sandbox();
+    await rm(join(box.home, ".cursor"), { recursive: true, force: true });
+
+    await installCommand(contextFor(box, capture(), { clientIds: ["cursor"] }), {
+      ...installOptions,
+      clientIds: ["cursor"],
+    });
+
+    expect(await box.read("home/.cursor/mcp.json")).toContain("universal-gateway");
+  });
+
   it("can target a single client", async () => {
     const box = await sandbox();
     await installCommand(contextFor(box, capture(), { clientIds: ["codex"] }), {
@@ -423,7 +460,7 @@ describe("prune and rollback", () => {
 
   it("deletes a file it created rather than leaving an empty one behind", async () => {
     const box = await sandbox();
-    await rm(join(box.home, ".cursor"), { recursive: true, force: true });
+    await rm(join(box.home, ".cursor", "mcp.json"), { force: true });
 
     await installCommand(contextFor(box, capture()), installOptions);
     expect(await box.exists("home/.cursor/mcp.json")).toBe(true);

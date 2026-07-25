@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { access, mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
 import { clientById, type ConfigLocation, type PathContext } from "./clients.js";
@@ -44,6 +44,7 @@ export async function planInstall(
   context: PathContext,
   options: InstallOptions,
 ): Promise<Plan> {
+  const named = new Set(options.clientIds ?? []);
   const configs = await loadConfigs(context, options.clientIds ?? []);
   const changes: FileChange[] = [];
   const skipped: SkippedLocation[] = [];
@@ -52,6 +53,15 @@ export async function planInstall(
     const { location } = config;
     if (!config.exists && !location.creatable) {
       skipped.push({ location, reason: "no configuration file for this client" });
+      continue;
+    }
+    if (!config.exists && !named.has(location.clientId) && !(await installed(location))) {
+      skipped.push({
+        location,
+        reason:
+          `${location.clientLabel} does not appear to be installed; ` +
+          `pass --client ${location.clientId} to write its configuration anyway`,
+      });
       continue;
     }
     if (config.exists && config.error) {
@@ -104,6 +114,15 @@ export async function planInstall(
   }
 
   return { changes, skipped };
+}
+
+/** Whether the client owning a location leaves any trace on this machine. */
+async function installed(location: ConfigLocation): Promise<boolean> {
+  if (location.evidencePath === null) return true;
+  return access(location.evidencePath).then(
+    () => true,
+    () => false,
+  );
 }
 
 export interface PruneOptions {

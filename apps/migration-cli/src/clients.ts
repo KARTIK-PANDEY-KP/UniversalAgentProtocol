@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 /**
  * Every supported host stores its MCP servers in one of three shapes. The
@@ -25,6 +25,12 @@ export interface ConfigLocation {
   path: string;
   /** Whether `install` may create this file when it does not exist yet. */
   creatable: boolean;
+  /**
+   * A path that exists only when the client is installed. `install` will not
+   * create a configuration for an application the user does not have, unless
+   * they named that client explicitly.
+   */
+  evidencePath: string | null;
 }
 
 export interface ClientDefinition {
@@ -45,6 +51,7 @@ function location(
   scope: ConfigScope,
   path: string,
   creatable: boolean,
+  evidencePath: string | null = null,
 ): ConfigLocation {
   return {
     clientId: client.id,
@@ -53,6 +60,7 @@ function location(
     scope,
     path,
     creatable,
+    evidencePath,
   };
 }
 
@@ -63,7 +71,7 @@ const cursor: ClientDefinition = {
   envReference: (variable) => `\${env:${variable}}`,
   locations({ home, cwd }) {
     return [
-      location(cursor, "user", join(home, ".cursor", "mcp.json"), true),
+      location(cursor, "user", join(home, ".cursor", "mcp.json"), true, join(home, ".cursor")),
       location(cursor, "project", join(cwd, ".cursor", "mcp.json"), false),
     ];
   },
@@ -76,7 +84,7 @@ const claudeCode: ClientDefinition = {
   envReference: (variable) => `\${${variable}}`,
   locations({ home, cwd }) {
     return [
-      location(claudeCode, "user", join(home, ".claude.json"), true),
+      location(claudeCode, "user", join(home, ".claude.json"), true, join(home, ".claude")),
       location(claudeCode, "project", join(cwd, ".mcp.json"), false),
     ];
   },
@@ -111,7 +119,7 @@ const codex: ClientDefinition = {
   envReference: (variable) => variable,
   locations({ home, cwd }) {
     return [
-      location(codex, "user", join(home, ".codex", "config.toml"), true),
+      location(codex, "user", join(home, ".codex", "config.toml"), true, join(home, ".codex")),
       location(codex, "project", join(cwd, ".codex", "config.toml"), false),
     ];
   },
@@ -149,11 +157,25 @@ export function pathContext(overrides: Partial<PathContext> = {}): PathContext {
   };
 }
 
-/** Every candidate config path, whether or not the file exists yet. */
+/**
+ * Every candidate config path, whether or not the file exists yet. A client's
+ * user and project locations collapse to the same file when the CLI runs from
+ * the home directory, so paths are deduplicated: scanning one file twice would
+ * report its servers twice and back it up twice.
+ */
 export function candidateLocations(
   context: PathContext,
   clientIds: string[] = [],
 ): ConfigLocation[] {
-  const wanted = clientIds.length === 0 ? CLIENTS : CLIENTS.filter((client) => clientIds.includes(client.id));
-  return wanted.flatMap((client) => client.locations(context));
+  const wanted =
+    clientIds.length === 0 ? CLIENTS : CLIENTS.filter((client) => clientIds.includes(client.id));
+  const seen = new Set<string>();
+  return wanted
+    .flatMap((client) => client.locations(context))
+    .filter((location) => {
+      const key = resolve(location.path);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
 }
