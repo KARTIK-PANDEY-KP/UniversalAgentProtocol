@@ -9,14 +9,14 @@ them.
 Cursor / Claude Code / Codex / cloud agents
         │  MCP client  →  MCP server
         ▼
-┌──────────────────────────────────────────────┐
-│ Universal Agent Protocol Gateway                        │
-│                                              │
-│  northbound MCP server   (packages/mcp-server)
-│  tool federation         (packages/federation)
-│  OAuth engine + vault    (packages/oauth, packages/security)
-│  southbound MCP client   (packages/mcp-client)
-└──────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│ Universal Agent Protocol gateway                             │
+│                                                              │
+│  northbound MCP server   (packages/mcp-server)               │
+│  tool federation         (packages/federation)               │
+│  OAuth engine + vault    (packages/oauth, packages/security) │
+│  southbound MCP client   (packages/mcp-client)               │
+└──────────────────────────────────────────────────────────────┘
         │  MCP client  →  MCP server
         │  OAuth client → authorization server
         ▼
@@ -190,3 +190,26 @@ their predecessor atomically; the old one is never left usable in storage.
 
 The background worker uses both paths, so a scheduled renewal running beside a
 live request cannot rotate a refresh token twice.
+
+## Deployment topology
+
+Two long-running processes and one database. `apps/migration-cli` is a tool an
+operator runs, not a service.
+
+Both mechanisms above are database-backed rather than in-memory — a lease row
+and a compare-and-swap, not a mutex — which is what makes the process count
+independent of the replica count. Any number of API replicas and worker
+replicas can run against one database.
+
+Today that generality is unreachable, because the store is SQLite: "the same
+database" means "the same file", which means one machine. The interesting part
+is that nothing above `packages/storage` assumes this. Implementing
+`GatewayStore` over Postgres is the whole change, and it turns one machine into
+three services — API, worker, database — that scale independently.
+
+Until then the honest count is one. Two processes sharing a file works on a
+single VM, and does not survive being split across a platform where storage
+attaches to exactly one service; see the Render notes in
+[operations/running.md](../operations/running.md). Where the worker cannot be
+its own service, its jobs are better run in-process or from a scheduler than
+left unrun.
