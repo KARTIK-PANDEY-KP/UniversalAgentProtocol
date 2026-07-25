@@ -18,6 +18,8 @@ export interface GatewayMcpClientOptions {
   apiKey: string;
   clientInfo?: McpImplementation;
   capabilities?: McpClientCapabilities;
+  /** Protocol version to request; defaults to the newest the gateway knows. */
+  protocolVersion?: string;
   /** Answers `elicitation/create` requests the gateway forwards. */
   onElicitation?(params: JsonObject): JsonObject;
   /** Answers `sampling/createMessage` requests the gateway forwards. */
@@ -68,7 +70,7 @@ export class GatewayMcpClient {
 
   async initialize(): Promise<JsonObject> {
     const request = this.build(McpMethod.Initialize, {
-      protocolVersion: LATEST_PROTOCOL_VERSION,
+      protocolVersion: this.options.protocolVersion ?? LATEST_PROTOCOL_VERSION,
       capabilities: (this.options.capabilities ?? {}) as unknown as JsonObject,
       clientInfo: (this.options.clientInfo ?? {
         name: "conformance-client",
