@@ -45,9 +45,43 @@ export interface NorthboundPrincipal {
   roles: string[];
 }
 
+/**
+ * Why a credential was turned away, in the vocabulary of RFC 6750 so it can be
+ * echoed straight into a `WWW-Authenticate` challenge. A client that is told
+ * only "unauthorized" cannot tell a expired token from a missing scope, and so
+ * retries the wrong recovery.
+ */
+export interface BearerChallenge {
+  error: "invalid_token" | "insufficient_scope" | "invalid_request";
+  description: string;
+  status: number;
+  /** Scopes the caller would need, for an `insufficient_scope` challenge. */
+  scope?: string;
+}
+
+export type AuthenticationOutcome =
+  | { authenticated: true; principal: NorthboundPrincipal }
+  /** No usable credential: `challenge` is absent when none was presented. */
+  | { authenticated: false; challenge?: BearerChallenge };
+
 export type NorthboundAuthenticator = (
   req: IncomingMessage,
-) => Promise<NorthboundPrincipal | null>;
+) => Promise<AuthenticationOutcome>;
+
+/** Assembles the `WWW-Authenticate` value for a rejected or absent credential. */
+export function bearerChallengeHeader(
+  resourceMetadataUrl: string | undefined,
+  challenge: BearerChallenge | undefined,
+): string {
+  const parts: string[] = [];
+  if (challenge) {
+    parts.push(`error="${challenge.error}"`);
+    parts.push(`error_description="${challenge.description.replaceAll('"', "'")}"`);
+    if (challenge.scope) parts.push(`scope="${challenge.scope}"`);
+  }
+  if (resourceMetadataUrl) parts.push(`resource_metadata="${resourceMetadataUrl}"`);
+  return parts.length === 0 ? "Bearer" : `Bearer ${parts.join(", ")}`;
+}
 
 export interface RequestContext {
   sendNotification(notification: JsonRpcNotification): void;
@@ -124,16 +158,26 @@ export class NorthboundMcpServer {
       return;
     }
 
-    const principal = await this.options.authenticate(req);
-    if (!principal) {
-      const headers: Record<string, string> = {};
-      if (this.options.resourceMetadataUrl) {
-        headers["www-authenticate"] =
-          `Bearer resource_metadata="${this.options.resourceMetadataUrl}"`;
-      }
-      sendJson(res, 401, { error: "unauthorized" }, headers);
+    const outcome = await this.options.authenticate(req);
+    if (!outcome.authenticated) {
+      const { challenge } = outcome;
+      sendJson(
+        res,
+        challenge?.status ?? 401,
+        {
+          error: challenge?.error ?? "unauthorized",
+          ...(challenge ? { error_description: challenge.description } : {}),
+        },
+        {
+          "www-authenticate": bearerChallengeHeader(
+            this.options.resourceMetadataUrl,
+            challenge,
+          ),
+        },
+      );
       return;
     }
+    const principal = outcome.principal;
 
     switch (req.method) {
       case "POST":

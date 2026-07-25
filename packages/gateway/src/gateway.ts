@@ -24,6 +24,8 @@ import {
 import {
   NorthboundMcpServer,
   headerValue,
+  type AuthenticationOutcome,
+  type BearerChallenge,
   type NorthboundPrincipal,
 } from "@umg/mcp-server";
 import {
@@ -32,9 +34,11 @@ import {
   OAuthTokenClient,
   OAuthTokenManager,
   RegistrationSelector,
+  ResourceServerAuthenticator,
   buildClientIdMetadataDocument,
   gatewayIdentityFromBaseUrl,
   type GatewayIdentity,
+  type VerifiedAccessToken,
 } from "@umg/oauth";
 import {
   MetricsRegistry,
@@ -88,6 +92,8 @@ export interface GatewayServices {
   northbound: NorthboundMcpServer;
   policy: PolicyEngine;
   audit: AuditService;
+  /** Validates bearer tokens minted by the operator's authorization servers. */
+  resourceServer: ResourceServerAuthenticator;
   /** Caps control-plane requests per tenant. */
   apiLimiter: RateLimiter;
   /** Caps tool calls per tenant. */
@@ -182,6 +188,16 @@ export class Gateway {
       allowSampling: config.allowSampling,
       allowElicitation: config.allowElicitation,
       ...(options.policy ?? {}),
+    });
+    const resourceServer = new ResourceServerAuthenticator({
+      discovery,
+      fetcher,
+      clock,
+      logger,
+      issuers: config.gatewayAuthorizationServers,
+      resource: `${config.baseUrl}/mcp`,
+      requiredScopes: config.gatewayRequiredScopes,
+      allowHttp: config.allowHttp,
     });
     const perMinute = (limit: number): RateLimiter =>
       new RateLimiter({ limit, intervalMs: 60_000 }, () => clock.now());
@@ -287,6 +303,7 @@ export class Gateway {
       northbound,
       policy,
       audit,
+      resourceServer,
       apiLimiter,
       toolCallLimiter,
     };
@@ -340,28 +357,110 @@ export class Gateway {
   }
 
   /**
-   * Downstream authentication. The MVP accepts a gateway API key; production
-   * deployments front this with an OAuth authorization server and validate the
-   * bearer token against it, which changes nothing upstream.
+   * Downstream authentication. A gateway API key is the simplest credential and
+   * is checked first; where the operator has configured authorization servers
+   * the same header may instead carry an access token those servers minted for
+   * this gateway. Neither path changes anything upstream: the caller's identity
+   * only decides which tenant's connections and grants are in scope.
    */
-  async authenticate(req: IncomingMessage): Promise<NorthboundPrincipal | null> {
+  async authenticate(req: IncomingMessage): Promise<AuthenticationOutcome> {
     const presented = extractBearer(req);
-    if (!presented) return null;
+    if (!presented) return { authenticated: false };
+
     const match = this.services.config.apiKeys.find((candidate) =>
       constantTimeEquals(candidate.key, presented),
     );
-    if (!match) return null;
+    if (match) {
+      return {
+        authenticated: true,
+        principal: await this.principalFor(
+          match.tenantId,
+          match.userId,
+          match.label,
+          match.role,
+        ),
+      };
+    }
+
+    if (!this.services.resourceServer.enabled) return { authenticated: false };
+    try {
+      const token = await this.services.resourceServer.verify(presented);
+      return { authenticated: true, principal: await this.principalForToken(token) };
+    } catch (error) {
+      return { authenticated: false, challenge: toChallenge(error) };
+    }
+  }
+
+  /** The principal for an already-authenticated caller. */
+  private async principalFor(
+    tenantId: string,
+    userId: string,
+    clientLabel: string,
+    fallbackRole: string,
+  ): Promise<NorthboundPrincipal> {
     // The membership is the authority, so a role changed in the database takes
     // effect without restarting the process.
-    const membership = await this.services.store.memberships.get(
-      match.tenantId,
-      match.userId,
-    );
+    const membership = await this.services.store.memberships.get(tenantId, userId);
     return {
-      tenantId: match.tenantId,
-      userId: match.userId,
-      clientLabel: match.label,
-      roles: [membership?.role ?? match.role],
+      tenantId,
+      userId,
+      clientLabel,
+      roles: [membership?.role ?? fallbackRole],
+    };
+  }
+
+  /**
+   * Maps a verified access token onto a workspace member, creating the tenant,
+   * user and membership the first time a subject appears. Without that the
+   * operator would have to pre-create a row for everyone their authorization
+   * server can already vouch for.
+   */
+  private async principalForToken(
+    token: VerifiedAccessToken,
+  ): Promise<NorthboundPrincipal> {
+    const { config, store, clock } = this.services;
+    const claim = token.claims[config.tenantClaim];
+    const tenantId =
+      typeof claim === "string" && claim !== "" ? claim : config.defaultTenantId;
+    if (!tenantId) {
+      throw new GatewayError(
+        "FORBIDDEN",
+        `Token carries no ${config.tenantClaim} claim and no default tenant is configured`,
+      );
+    }
+    const userId = `${issuerKey(token.issuer)}:${token.subject}`;
+
+    if (!(await store.tenants.get(tenantId))) {
+      await store.tenants
+        .create({ id: tenantId, name: tenantId, status: "ACTIVE", createdAt: clock.now() })
+        .catch(() => undefined);
+    }
+    if (!(await store.users.get(tenantId, userId))) {
+      await store.users
+        .create({
+          id: userId,
+          tenantId,
+          externalIdentity: userId,
+          email:
+            typeof token.claims["email"] === "string"
+              ? token.claims["email"]
+              : `${userId}@example.invalid`,
+          status: "ACTIVE",
+          createdAt: clock.now(),
+        })
+        .catch(() => undefined);
+    }
+
+    const role = roleFromClaims(token.claims, config.rolesClaim) ?? config.defaultRole;
+    await store.memberships
+      .upsert({ tenantId, userId, role, createdAt: clock.now() })
+      .catch(() => undefined);
+
+    return {
+      tenantId,
+      userId,
+      clientLabel: token.clientId ?? "oauth",
+      roles: [role],
     };
   }
 
@@ -425,6 +524,46 @@ export class Gateway {
     }
     this.services.store.close();
   }
+}
+
+/** Turns a verification failure into the challenge the client should see. */
+function toChallenge(error: unknown): BearerChallenge {
+  const gatewayError = toGatewayError(error);
+  const data = isRecord(gatewayError.data) ? gatewayError.data : {};
+  const oauthError = data["oauthError"];
+  const scope = data["scope"];
+  return {
+    error:
+      oauthError === "insufficient_scope" || oauthError === "invalid_request"
+        ? oauthError
+        : "invalid_token",
+    description: gatewayError.message,
+    status: gatewayError.httpStatus === 403 ? 403 : 401,
+    ...(typeof scope === "string" ? { scope } : {}),
+  };
+}
+
+/**
+ * Namespaces a subject by its issuer. Two authorization servers may both mint
+ * `sub: "1"`, and without the prefix the second one silently inherits the
+ * first's connections.
+ */
+function issuerKey(issuer: string): string {
+  try {
+    return new URL(issuer).host;
+  } catch {
+    return issuer;
+  }
+}
+
+function roleFromClaims(claims: Record<string, unknown>, claim: string): string | null {
+  const value = claims[claim];
+  if (typeof value === "string" && value !== "") return value;
+  if (Array.isArray(value)) {
+    const first = value.find((entry) => typeof entry === "string" && entry !== "");
+    if (typeof first === "string") return first;
+  }
+  return null;
 }
 
 export function extractBearer(req: IncomingMessage): string | null {

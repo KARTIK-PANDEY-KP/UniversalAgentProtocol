@@ -1,7 +1,14 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { isTokenEndpointAuthMethod, newId, toGatewayError } from "@umg/core";
-import { readBody, sendEmpty, sendJson, type NorthboundPrincipal } from "@umg/mcp-server";
+import {
+  bearerChallengeHeader,
+  readBody,
+  sendEmpty,
+  sendJson,
+  type AuthenticationOutcome,
+  type NorthboundPrincipal,
+} from "@umg/mcp-server";
 import {
   buildClientIdMetadataDocument,
   type OAuthCallbackInput,
@@ -11,7 +18,7 @@ import { canonicalizeUrl, isReturnUrlAllowed } from "@umg/security";
 import { parseJsonBody, type GatewayServices } from "./gateway.js";
 import type { Router } from "./router.js";
 
-type Authenticate = (req: IncomingMessage) => Promise<NorthboundPrincipal | null>;
+type Authenticate = (req: IncomingMessage) => Promise<AuthenticationOutcome>;
 
 const MAX_BODY = 1_000_000;
 
@@ -24,22 +31,29 @@ export function registerRoutes(
   const urlPolicy = { allowHttp: config.allowHttp };
   const returnToOrigins = [new URL(config.baseUrl).origin, ...config.returnToOrigins];
 
+  const resourceMetadataUrl = `${config.baseUrl}/.well-known/oauth-protected-resource`;
+
   const requirePrincipal = async (
     req: IncomingMessage,
     res: ServerResponse,
   ): Promise<NorthboundPrincipal | null> => {
-    const principal = await authenticate(req);
-    if (!principal) {
+    const outcome = await authenticate(req);
+    if (!outcome.authenticated) {
+      const { challenge } = outcome;
       sendJson(
         res,
-        401,
-        { error: "unauthorized" },
+        challenge?.status ?? 401,
         {
-          "www-authenticate": `Bearer resource_metadata="${config.baseUrl}/.well-known/oauth-protected-resource"`,
+          error: challenge?.error ?? "unauthorized",
+          ...(challenge ? { error_description: challenge.description } : {}),
+        },
+        {
+          "www-authenticate": bearerChallengeHeader(resourceMetadataUrl, challenge),
         },
       );
       return null;
     }
+    const principal = outcome.principal;
     const decision = services.apiLimiter.check(principal.tenantId);
     if (!decision.allowed) {
       sendJson(
@@ -116,8 +130,8 @@ export function registerRoutes(
     if (error) input.error = error;
     if (description) input.errorDescription = description;
 
-    const principal = await authenticate(req);
-    if (principal) input.actingUserId = principal.userId;
+    const outcome = await authenticate(req);
+    if (outcome.authenticated) input.actingUserId = outcome.principal.userId;
 
     try {
       const result = await tokenManager.exchangeCode(input);
@@ -162,8 +176,8 @@ export function registerRoutes(
 
   /** Human entry point used by reconnect links surfaced in MCP errors. */
   router.get("/connect/:id", async (req, res, match) => {
-    const principal = await authenticate(req);
-    if (!principal) {
+    const outcome = await authenticate(req);
+    if (!outcome.authenticated) {
       sendHtml(
         res,
         401,
@@ -173,6 +187,7 @@ export function registerRoutes(
       );
       return;
     }
+    const principal = outcome.principal;
     const { authorizationUrl } = await connections.startAuthorization({
       tenantId: principal.tenantId,
       userId: principal.userId,

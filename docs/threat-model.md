@@ -199,7 +199,20 @@ document and the JWKS endpoint as production infrastructure: monitor
 availability, never let registration lapse, and rotate signing keys with an
 overlap window during which the retired public key is still published.
 
-**Downstream authentication is only as strong as it is configured to be.** The
-MVP shared API key gives no per-user attribution. Production deployments should
-protect the gateway as an OAuth resource so each application holds its own
-token while resolving to the same user and the same upstream connections.
+**Downstream authentication is only as strong as it is configured to be.** A
+shared API key gives no per-user attribution and cannot be revoked for one
+application without revoking it for all of them. Setting
+`GATEWAY_AUTHORIZATION_SERVERS` moves the deployment onto access tokens instead,
+so each application holds its own credential while resolving to the same user
+and the same upstream connections.
+
+Tokens are only accepted when their audience names this gateway. That check is
+what separates a resource server from a confused deputy: authorization servers
+are routinely shared between services, and without it a token minted for any
+other service that trusts the same issuer would unlock every upstream connection
+the subject owns here. The issuer list is enumerated rather than discovered for
+the same reason — an attacker who can name their own issuer can name their own
+keys.
+
+Subjects are namespaced by issuer host before they become user IDs, so two
+authorization servers that both mint `sub: "1"` stay distinct.

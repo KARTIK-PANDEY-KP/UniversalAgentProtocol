@@ -44,8 +44,13 @@ All configuration is environment variables.
 | `GATEWAY_API_REQUESTS_PER_MINUTE` | `300` | Control-plane and MCP requests a tenant may make per minute; `0` disables the limit |
 | `GATEWAY_ALLOWED_ORIGINS` | none | Origins permitted on the MCP endpoint |
 | `GATEWAY_RETURN_TO_ORIGINS` | none | Extra origins a post-authorization `return_to` may point at; the gateway's own origin is always allowed |
-| `GATEWAY_AUTHORIZATION_SERVERS` | none | Issuers that mint tokens for the gateway itself |
+| `GATEWAY_AUTHORIZATION_SERVERS` | none | Issuers whose access tokens the gateway accepts in place of an API key; unset disables token authentication |
 | `GATEWAY_SCOPES_SUPPORTED` | `mcp` | Scopes advertised in the gateway's protected resource metadata |
+| `GATEWAY_REQUIRED_SCOPES` | the advertised scopes | Scopes an access token must carry at least one of |
+| `GATEWAY_TENANT_CLAIM` | `tenant_id` | Claim naming the workspace an access token belongs to |
+| `GATEWAY_DEFAULT_TENANT` | none | Workspace used when a token carries no tenant claim; without it such a token is refused |
+| `GATEWAY_ROLES_CLAIM` | `roles` | Claim naming the caller's workspace roles |
+| `GATEWAY_DEFAULT_ROLE` | `member` | Role given to a subject whose claims name none |
 | `GATEWAY_ALLOW_HTTP_UPSTREAMS` | true when the base URL is HTTP | Permit `http://` upstreams |
 | `GATEWAY_ALLOW_LOOPBACK_UPSTREAMS` | true when the base URL is HTTP | Permit loopback upstreams |
 | `GATEWAY_ALLOW_PRIVATE_UPSTREAMS` | `false` | Permit RFC 1918 and similar ranges |

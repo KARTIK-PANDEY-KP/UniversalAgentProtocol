@@ -35,6 +35,19 @@ export interface GatewayConfig {
   /** Authorization servers that issue tokens for the gateway itself. */
   gatewayAuthorizationServers: string[];
   gatewayScopesSupported: string[];
+  /**
+   * Scopes a downstream access token must carry at least one of. Defaults to
+   * whatever the gateway advertises, so the metadata and the check agree.
+   */
+  gatewayRequiredScopes: string[];
+  /** Claim naming the workspace an access token belongs to. */
+  tenantClaim: string;
+  /** Workspace used when a token carries no tenant claim. */
+  defaultTenantId: string | null;
+  /** Claim naming the caller's workspace roles. */
+  rolesClaim: string;
+  /** Role given to a token subject whose claims name none. */
+  defaultRole: string;
   /** Roles allowed to call anything other than a read-only tool; empty allows all. */
   writeRoles: string[];
   /** Risk classes never exposed, whatever an upstream advertises. */
@@ -77,6 +90,9 @@ const DEFAULTS = {
   maxArgumentBytes: 256 * 1024,
   maxResultBytes: 4 * 1024 * 1024,
   pageSize: 100,
+  tenantClaim: "tenant_id",
+  rolesClaim: "roles",
+  defaultRole: "member",
 };
 
 function parseList(value: string | undefined): string[] {
@@ -125,6 +141,7 @@ export function parseApiKeys(value: string | undefined): ApiKeyPrincipal[] {
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): GatewayConfig {
   const baseUrl = (env["GATEWAY_BASE_URL"] ?? DEFAULTS.baseUrl).replace(/\/+$/u, "");
   const isLocal = baseUrl.startsWith("http://");
+  const scopesSupported = parseScopes(env["GATEWAY_SCOPES_SUPPORTED"] ?? "mcp");
   return {
     baseUrl,
     host: env["HOST"] ?? DEFAULTS.host,
@@ -140,7 +157,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): GatewayConfig 
     allowPrivateNetworks: parseBool(env["GATEWAY_ALLOW_PRIVATE_UPSTREAMS"], false),
     hostAllowlist: parseList(env["GATEWAY_UPSTREAM_HOST_ALLOWLIST"]),
     gatewayAuthorizationServers: parseList(env["GATEWAY_AUTHORIZATION_SERVERS"]),
-    gatewayScopesSupported: parseScopes(env["GATEWAY_SCOPES_SUPPORTED"] ?? "mcp"),
+    gatewayScopesSupported: scopesSupported,
+    gatewayRequiredScopes: env["GATEWAY_REQUIRED_SCOPES"]
+      ? parseScopes(env["GATEWAY_REQUIRED_SCOPES"])
+      : scopesSupported,
+    tenantClaim: env["GATEWAY_TENANT_CLAIM"] ?? DEFAULTS.tenantClaim,
+    defaultTenantId: env["GATEWAY_DEFAULT_TENANT"] ?? null,
+    rolesClaim: env["GATEWAY_ROLES_CLAIM"] ?? DEFAULTS.rolesClaim,
+    defaultRole: env["GATEWAY_DEFAULT_ROLE"] ?? DEFAULTS.defaultRole,
     writeRoles: parseList(env["GATEWAY_WRITE_ROLES"]),
     blockedRiskLevels: parseRiskLevels(
       "GATEWAY_BLOCKED_RISK_LEVELS",

@@ -214,3 +214,38 @@ Deleting a connection calls the authorization server's revocation endpoint with
 the refresh token when one is advertised, then clears the stored credentials.
 Failure to reach the endpoint does not block the local deletion, but it is
 logged.
+
+## The gateway as a protected resource
+
+Everything above describes the gateway acting as an OAuth *client*. It is also
+an OAuth *resource server*: `/.well-known/oauth-protected-resource` names the
+issuers whose access tokens it accepts, and both `/mcp` and the control plane
+validate them.
+
+Set `GATEWAY_AUTHORIZATION_SERVERS` to turn this on. A gateway API key is still
+checked first, so the two credentials coexist; where no issuer is configured the
+token path is skipped entirely rather than failing open.
+
+A presented JWT has to clear all of the following before it becomes a principal.
+
+| Check | Why it is there |
+| --- | --- |
+| `alg` is asymmetric | `none` and the HMAC family would let anyone who read the metadata mint a token |
+| `iss` is a configured issuer | Trust is enumerated, not inferred from the token |
+| Signature verifies against the issuer's JWKS | An unknown `kid` triggers one refetch, so a key rotation does not lock everyone out |
+| `exp` is present and in the future | A token with no expiry never stops being useful to whoever steals it |
+| `aud` contains `${GATEWAY_BASE_URL}/mcp` | Without this, any token from a shared authorization server unlocks the gateway — the confused deputy the audience check exists to prevent |
+| `scope` includes one of `GATEWAY_REQUIRED_SCOPES` | Defaults to the scopes the metadata advertises, so the two agree |
+
+Rejections come back as RFC 6750 challenges rather than a bare `401`: an expired
+token gets `error="invalid_token"`, a token that is merely too narrow gets a
+`403` with `error="insufficient_scope"` and the scope it needs. A client that is
+told only "unauthorized" cannot tell those apart, and retries the wrong recovery.
+
+The subject becomes a workspace member on first sight. The tenant comes from the
+`GATEWAY_TENANT_CLAIM` claim (falling back to `GATEWAY_DEFAULT_TENANT`), the role
+from `GATEWAY_ROLES_CLAIM`, and the user ID is the subject prefixed by the
+issuer's host — two authorization servers may both mint `sub: "1"`, and without
+the prefix the second would inherit the first's connections.
+
+*Verified by* `conformance/tests/gateway-auth.test.ts`.

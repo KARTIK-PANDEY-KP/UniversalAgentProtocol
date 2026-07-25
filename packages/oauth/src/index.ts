@@ -3,6 +3,7 @@ export * from "./insufficient-scope.js";
 export * from "./pkce.js";
 export * from "./protocol-error.js";
 export * from "./discovery.js";
+export * from "./resource-server.js";
 export * from "./client-metadata.js";
 export * from "./client-assertion.js";
 export * from "./dpop.js";
