@@ -58,6 +58,7 @@ import {
   PostgresDriver,
   SqlGatewayStore,
   SqliteDriver,
+  redactConnectionString,
   type GatewayStore,
   type SqlDriver,
 } from "@uap/storage";
@@ -339,8 +340,37 @@ export class Gateway {
    * of a socket the constructor cannot have finished the work itself.
    */
   private async start(): Promise<void> {
+    // Before connecting rather than after, so that a database which cannot be
+    // reached still leaves a line saying which one it was.
+    this.announceDatabase();
     await this.services.store.init();
     await this.ensurePrincipals();
+  }
+
+  /**
+   * Says where the state is going to live. This is worth a line of its own
+   * because the failure it prevents is silent: an in-memory database serves
+   * every request correctly and loses every stored credential when the process
+   * ends, and nothing about a working gateway distinguishes the two.
+   */
+  private announceDatabase(): void {
+    const { config, logger } = this.services;
+    if (config.databaseUrl) {
+      logger.info("Storing state in Postgres", {
+        database: redactConnectionString(config.databaseUrl),
+        ...(config.databaseSchema ? { schema: config.databaseSchema } : {}),
+      });
+      return;
+    }
+    if (config.databaseFile === ":memory:") {
+      logger.warn(
+        "Storing state in memory: every connection and OAuth grant will be " +
+          "lost when this process exits. Set GATEWAY_DATABASE_URL or " +
+          "GATEWAY_DATABASE_FILE to keep them.",
+      );
+      return;
+    }
+    logger.info("Storing state in SQLite", { database: config.databaseFile });
   }
 
   get clientMetadataDocument(): ReturnType<typeof buildClientIdMetadataDocument> {
