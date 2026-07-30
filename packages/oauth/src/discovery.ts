@@ -11,9 +11,9 @@ import {
 import { Metric, type Logger, type MetricsRegistry } from "@uap/observability";
 import {
   canonicalIssuer,
-  canonicalizeUrl,
   issuerToWellKnown,
   parseAbsoluteUrl,
+  resourceIdentifier,
   resourceMetadataCandidates,
   sameIssuer,
   type SafeFetcher,
@@ -96,8 +96,8 @@ export class OAuthDiscoveryService {
     }
     const metadata = value as unknown as ProtectedResourceMetadata;
     const policy = { allowHttp: this.deps.allowHttp };
-    const declared = canonicalizeUrl(metadata.resource, policy);
-    const requested = canonicalizeUrl(mcpUrl, policy);
+    const declared = resourceIdentifier(metadata.resource, policy);
+    const requested = resourceIdentifier(mcpUrl, policy);
     const isParent = requested === declared || requested.startsWith(`${declared}/`);
     if (!isParent) {
       this.deps.metrics.counter(Metric.ResourceMismatch, { stage: "prm" });
