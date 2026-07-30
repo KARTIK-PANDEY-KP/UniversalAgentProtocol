@@ -66,6 +66,46 @@ describe("gateway security", () => {
       expect(transcript).not.toMatch(/"code"\s*:\s*"code_/u);
     });
 
+    it("names the database at startup without naming its password", async () => {
+      // Where state is kept is the difference between a gateway that
+      // remembers an OAuth grant and one that silently forgets it on exit, and
+      // a working gateway looks identical either way. So it is said out loud —
+      // but a connection string carries a password, and saying it out loud is
+      // how a credential ends up in a log aggregator.
+      const gateway = new GatewayFixture({
+        captureLogs: true,
+        config: {
+          databaseUrl: "postgres://someone:hunter2@db.example.invalid:5432/uap",
+        },
+      });
+      // The host does not resolve, so booting never finishes. That is the
+      // point: the line is written before the connection is attempted, so an
+      // unreachable database still says which one it was.
+      await expect(gateway.start()).rejects.toThrow();
+
+      const announcement = gateway.logs.find(
+        (record) => record["message"] === "Storing state in Postgres",
+      );
+      expect(announcement).toBeDefined();
+      expect(announcement?.["database"]).toContain("db.example.invalid");
+      expect(JSON.stringify(gateway.logs)).not.toContain("hunter2");
+    });
+
+    it("warns that an in-memory database will lose every stored grant", async () => {
+      // Stated rather than inherited from the fixture's default, which follows
+      // whichever backend the suite is running against.
+      const gateway = await newGateway({
+        captureLogs: true,
+        config: { databaseUrl: null, databaseFile: ":memory:" },
+      });
+      const warning = gateway.logs.find(
+        (record) =>
+          record["level"] === "warn" &&
+          String(record["message"]).includes("Storing state in memory"),
+      );
+      expect(warning).toBeDefined();
+    });
+
     it("redacts credentials that reach the logger anyway", async () => {
       const gateway = await newGateway({ captureLogs: true });
       // Proving the flow above logs nothing sensitive is only half the story:

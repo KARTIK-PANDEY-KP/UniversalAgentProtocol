@@ -37,8 +37,11 @@ what matters when you deploy.
   Without it a key is generated at boot, and after every restart authorization
   servers holding a cached JWKS reject the gateway's client assertions until
   that cache expires.
-- `GATEWAY_DATABASE_FILE` on durable storage, not an ephemeral container
-  filesystem.
+- `GATEWAY_DATABASE_URL` pointing at a Postgres, or `GATEWAY_DATABASE_FILE` at
+  a path on durable storage. Neither set means an in-memory database, which
+  serves every request correctly and loses every stored credential when the
+  process exits. The gateway warns about this at startup; `uap-db check` is the
+  way to confirm before it matters.
 - `GATEWAY_ALLOWED_ORIGINS` set, so a page in a browser cannot drive the MCP
   endpoint.
 - `GATEWAY_ALLOW_HTTP_UPSTREAMS`, `GATEWAY_ALLOW_LOOPBACK_UPSTREAMS` and
@@ -46,6 +49,28 @@ what matters when you deploy.
   deliberate requirement, in which case pair them with an allowlist.
 - Downstream authentication moved from shared API keys to the gateway's own
   OAuth resource, so each application has an attributable identity.
+
+## The database
+
+The gateway creates its own schema on boot, so nothing has to be run first.
+Where that is the wrong moment to find out — a deploy that should fail before
+the first instance starts, a connection string that should be checked before it
+is trusted — `uap-db` does the same work without a gateway:
+
+```bash
+uap-db provision --url postgres://user:pass@host:5432/db --schema uap
+uap-db check     # reads GATEWAY_DATABASE_URL, prints a row count per table
+```
+
+It resolves `GATEWAY_DATABASE_URL`, `GATEWAY_DATABASE_SCHEMA` and
+`GATEWAY_DATABASE_FILE` exactly as the gateway does, so a database it prepared
+is the one the gateway will open. `provision` is safe to rerun; `check` writes
+nothing and exits non-zero when the schema is incomplete, which is enough to
+gate a deploy.
+
+Set `GATEWAY_DATABASE_SCHEMA` when the Postgres is a hosted product that
+publishes a schema over HTTP. Supabase serves `public` through PostgREST, and
+these tables hold credentials.
 
 ## Render
 

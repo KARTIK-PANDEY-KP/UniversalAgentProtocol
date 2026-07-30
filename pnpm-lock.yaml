@@ -24,6 +24,12 @@ importers:
         specifier: workspace:*
         version: link:../../packages/gateway
 
+  apps/database-cli:
+    dependencies:
+      '@uap/storage':
+        specifier: workspace:*
+        version: link:../../packages/storage
+
   apps/gateway-api:
     dependencies:
       '@uap/gateway':

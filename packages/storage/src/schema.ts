@@ -261,6 +261,15 @@ CREATE TABLE IF NOT EXISTS distributed_locks (
 );
 `;
 
+/**
+ * Every table the schema defines, read out of the schema itself so that the
+ * list cannot fall behind the thing it lists. Anything that wants to check a
+ * database looks complete asks this.
+ */
+export const TABLE_NAMES: readonly string[] = [
+  ...DDL.matchAll(/CREATE TABLE IF NOT EXISTS (\w+)/gu),
+].map(([, name]) => name as string);
+
 export const tenantMapper: Mapper<Tenant> = {
   id: text("id"),
   name: text("name"),

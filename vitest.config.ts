@@ -19,6 +19,9 @@ export default defineConfig({
       "@uap/migration-cli": fileURLToPath(
         new URL("./apps/migration-cli/src/index.ts", import.meta.url),
       ),
+      "@uap/database-cli": fileURLToPath(
+        new URL("./apps/database-cli/src/index.ts", import.meta.url),
+      ),
       "@uap/conformance": fileURLToPath(
         new URL("./conformance/harness/src/index.ts", import.meta.url),
       ),
