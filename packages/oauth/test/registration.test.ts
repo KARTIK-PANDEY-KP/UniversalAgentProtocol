@@ -73,7 +73,27 @@ describe("client ID metadata documents", () => {
     expect(await strategy("http://gateway.example.com", false).supports(CIMD_SERVER)).toBe(
       false,
     );
-    expect(await strategy("http://127.0.0.1:8080", true).supports(CIMD_SERVER)).toBe(true);
+  });
+
+  it("stands aside when the authorization server could not fetch the document", async () => {
+    // The mechanism hands the server a URL and waits for it to be fetched, so
+    // it needs the server to be able to reach us. Nothing on the internet can
+    // reach a loopback address, and a gateway on a laptop is the ordinary
+    // case: without this the authorization request is built, sent, and refused
+    // with "invalid client_id", where standing aside registers dynamically and
+    // connects.
+    expect(await strategy("http://127.0.0.1:8080", true).supports(CIMD_SERVER)).toBe(false);
+  });
+
+  it("still offers itself to an authorization server that is equally local", async () => {
+    // The test is whether that server can reach this address, not whether the
+    // address is public. Two processes on one machine can reach each other,
+    // which is what makes local development against a local server work.
+    const local: AuthorizationServerMetadata = {
+      ...CIMD_SERVER,
+      issuer: "http://127.0.0.1:9100",
+    };
+    expect(await strategy("http://127.0.0.1:8080", true).supports(local)).toBe(true);
   });
 
   it("stands aside when the server never advertised the mechanism", async () => {

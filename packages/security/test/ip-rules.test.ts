@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { classifyAddress } from "@uap/security";
+import { classifyAddress, isPubliclyReachableHost } from "@uap/security";
 
 describe("classifying IPv4", () => {
   it.each([
@@ -75,5 +75,33 @@ describe("classifying IPv6", () => {
   it("treats anything it cannot parse as reserved", () => {
     expect(classifyAddress("not-an-address")).toBe("RESERVED");
     expect(classifyAddress("")).toBe("RESERVED");
+  });
+});
+
+describe("reachability from elsewhere", () => {
+  it("treats a public address or name as reachable", () => {
+    expect(isPubliclyReachableHost("mcp.example.com")).toBe(true);
+    expect(isPubliclyReachableHost("93.184.216.34")).toBe(true);
+    expect(isPubliclyReachableHost("[2606:2800:220:1:248:1893:25c8:1946]")).toBe(true);
+  });
+
+  it("treats anything only this machine can resolve as unreachable", () => {
+    // What matters is the resolver on the other side, so a name reserved for
+    // local resolution is judged by its suffix rather than by resolving it.
+    for (const host of [
+      "127.0.0.1",
+      "localhost",
+      "LOCALHOST.",
+      "gateway.localhost",
+      "printer.local",
+      "db.internal",
+      "thing.home.arpa",
+      "10.0.0.5",
+      "192.168.1.10",
+      "169.254.169.254",
+      "[::1]",
+    ]) {
+      expect(isPubliclyReachableHost(host), host).toBe(false);
+    }
   });
 });
