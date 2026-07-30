@@ -45,7 +45,12 @@
     {
       "name": "entrypoint",
       "purpose": "The deployables. No library may depend on these.",
-      "modules": ["@uap/gateway-api", "@uap/background-worker", "@uap/migration-cli"]
+      "modules": [
+        "@uap/gateway-api",
+        "@uap/background-worker",
+        "@uap/migration-cli",
+        "@uap/database-cli"
+      ]
     },
     {
       "name": "harness",

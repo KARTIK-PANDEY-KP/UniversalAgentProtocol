@@ -17,6 +17,8 @@
     { "path": "apps/background-worker" },
     { "path": "apps/migration-cli" },
     { "path": "apps/migration-cli/test" },
+    { "path": "apps/database-cli" },
+    { "path": "apps/database-cli/test" },
     { "path": "conformance/harness" },
     { "path": "conformance/tests" }
   ]
