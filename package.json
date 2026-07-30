@@ -16,6 +16,7 @@
     "architecture": "node tooling/architecture/check.mjs",
     "check": "pnpm architecture && pnpm typecheck && pnpm test",
     "start": "node apps/gateway-api/dist/main.js",
+    "tunnel": "node tooling/tunnel/start.mjs",
     "worker": "node apps/background-worker/dist/main.js",
     "dev": "node --experimental-strip-types apps/gateway-api/src/main.ts",
     "migrate": "node apps/migration-cli/dist/main.js"
