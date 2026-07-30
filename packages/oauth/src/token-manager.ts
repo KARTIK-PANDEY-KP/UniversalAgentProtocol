@@ -277,6 +277,16 @@ export class OAuthTokenManager {
       this.deps.metrics.counter(Metric.OauthAuthorizationFailed, {
         reason: error instanceof OAuthProtocolError ? error.error : "exchange_failed",
       });
+      // The reason is stored on the connection, but an authorization failing
+      // is the sort of thing someone is usually watching the log for, and a
+      // run that shows the transaction opening and then nothing reads as a
+      // request that vanished.
+      this.deps.logger.warn("Authorization code exchange failed", {
+        connectionId: connection.id,
+        issuer: transaction.issuer,
+        ...(error instanceof OAuthProtocolError ? { oauthError: error.error } : {}),
+        reason: clampText((error as Error).message, 200),
+      });
       await this.recordConnectionError(connection.id, error);
       throw new GatewayError(
         "TOKEN_EXCHANGE_FAILED",

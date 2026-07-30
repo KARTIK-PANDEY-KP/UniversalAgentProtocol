@@ -218,7 +218,7 @@ export function registerRoutes(
         res,
         gatewayError.httpStatus,
         "Authorization failed",
-        gatewayError.message,
+        withReason(gatewayError),
       );
     }
   });
@@ -592,6 +592,23 @@ function isStringRecord(value: unknown): value is Record<string, string> {
     !Array.isArray(value) &&
     Object.values(value).every((item) => typeof item === "string")
   );
+}
+
+/**
+ * Adds what actually went wrong to what the gateway was doing at the time.
+ *
+ * The outer message names the step — "the authorization code could not be
+ * exchanged" — and the cause names the reason, which is usually the
+ * authorization server's own `error_description`. Without it the last page of
+ * a failed OAuth flow tells the user nothing they could act on, while the same
+ * reason is already visible on the connection through the API. It is the
+ * server's words about our request, not ours about our secrets.
+ */
+function withReason(error: GatewayError): string {
+  const cause = error.cause;
+  const reason = cause instanceof Error ? cause.message : null;
+  if (!reason || reason === error.message) return error.message;
+  return `${error.message}: ${reason.slice(0, 300)}`;
 }
 
 function sendHtml(
