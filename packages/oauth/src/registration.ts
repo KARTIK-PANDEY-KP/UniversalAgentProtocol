@@ -83,6 +83,24 @@ function pickAuthMethod(
   return advertised[0] ?? "none";
 }
 
+/**
+ * Whether a stored registration still describes this gateway.
+ *
+ * A registration is a statement to the authorization server about where the
+ * client lives: the redirect URI it will return to, and for CIMD the URL of
+ * the document describing it. Change `GATEWAY_BASE_URL` — moving behind a
+ * tunnel is the usual way — and the stored statement is about somewhere else.
+ * The server has no reason to accept it and will not, so reusing it produces a
+ * request that cannot succeed and an error naming the redirect URI or the
+ * client id rather than the thing that actually changed.
+ */
+function madeByThisGateway(
+  record: OAuthClientRegistrationRecord,
+  redirectUri: string,
+): boolean {
+  return record.redirectUris.includes(redirectUri);
+}
+
 async function toResolved(
   record: OAuthClientRegistrationRecord,
   deps: RegistrationDeps,
@@ -246,7 +264,15 @@ export class ClientIdMetadataDocumentStrategy
       context.tenantId,
       context.issuerRecord.id,
     );
-    if (existing?.registrationType === "CIMD") return toResolved(existing, this.deps);
+    if (existing?.registrationType === "CIMD") {
+      if (
+        existing.clientId === this.deps.identity.clientMetadataUrl &&
+        madeByThisGateway(existing, context.redirectUri)
+      ) {
+        return toResolved(existing, this.deps);
+      }
+      await this.deps.store.registrations.update(existing.id, { status: "INVALID" });
+    }
 
     const method = this.deps.identity.supportsPrivateKeyJwt
       ? pickAuthMethod(context.metadata.token_endpoint_auth_methods_supported, [
@@ -297,7 +323,11 @@ export class DynamicClientRegistrationStrategy
       context.tenantId,
       context.issuerRecord.id,
     );
-    if (existing?.registrationType === "DYNAMIC" && !this.isExpired(existing)) {
+    if (
+      existing?.registrationType === "DYNAMIC" &&
+      !this.isExpired(existing) &&
+      madeByThisGateway(existing, context.redirectUri)
+    ) {
       return toResolved(existing, this.deps);
     }
     if (existing?.registrationType === "DYNAMIC") {

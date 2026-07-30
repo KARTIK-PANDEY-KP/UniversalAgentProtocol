@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import type { AuthorizationServerMetadata } from "@uap/core";
-import { createLogger, silentSink } from "@uap/observability";
+import { MetricsRegistry, createLogger, silentSink } from "@uap/observability";
+import { CredentialVault, LocalKeyring } from "@uap/security";
+import { createInMemoryStore } from "@uap/storage";
 import {
   ClientIdMetadataDocumentStrategy,
   assertValidClientIdMetadataUrl,
@@ -94,6 +96,72 @@ describe("client ID metadata documents", () => {
       issuer: "http://127.0.0.1:9100",
     };
     expect(await strategy("http://127.0.0.1:8080", true).supports(local)).toBe(true);
+  });
+
+  it("re-registers when the gateway has moved since it last registered", async () => {
+    // A registration says where the client lives: the redirect URI it returns
+    // to, and for CIMD the URL of the document describing it. Put the gateway
+    // behind a tunnel and both statements are about the old address, so the
+    // authorization server refuses a client_id it cannot fetch — while the
+    // redirect_uri in the same request is the new one, which is what makes the
+    // error so confusing. Reusing a registration made by a different address
+    // is what has to stop.
+    const store = await createInMemoryStore();
+    const issuer = await store.issuers.upsert({
+      id: "iss_1",
+      issuer: "https://as.example.com",
+      authorizationEndpoint: "https://as.example.com/authorize",
+      tokenEndpoint: "https://as.example.com/token",
+      registrationEndpoint: null,
+      revocationEndpoint: null,
+      metadataJson: {},
+      metadataEtag: null,
+      metadataExpiresAt: Date.now() + 60_000,
+      supportsCimd: true,
+      supportsDcr: false,
+      supportedAuthMethods: ["none"],
+      status: "ACTIVE",
+    });
+
+    const before = "http://127.0.0.1:8787";
+    const after = "https://53f2.ngrok-free.app";
+    const deps = (baseUrl: string): RegistrationDeps =>
+      ({
+        store,
+        vault: new CredentialVault(LocalKeyring.generate()),
+        identity: gatewayIdentityFromBaseUrl(baseUrl),
+        clock: { now: () => Date.now() },
+        logger: createLogger({ sink: silentSink }),
+        metrics: new MetricsRegistry(),
+        allowHttp: true,
+      }) as unknown as RegistrationDeps;
+
+    const context = (baseUrl: string): Parameters<
+      ClientIdMetadataDocumentStrategy["getOrCreateRegistration"]
+    >[0] => ({
+      tenantId: "tenant_a",
+      issuerRecord: issuer,
+      metadata: CIMD_SERVER,
+      redirectUri: `${baseUrl}/oauth/callback`,
+      requestedScopes: [],
+    });
+
+    const first = await new ClientIdMetadataDocumentStrategy(
+      deps(before),
+    ).getOrCreateRegistration(context(before));
+    expect(first.clientId).toBe(`${before}/oauth/client-metadata.json`);
+
+    const second = await new ClientIdMetadataDocumentStrategy(
+      deps(after),
+    ).getOrCreateRegistration(context(after));
+    expect(second.clientId).toBe(`${after}/oauth/client-metadata.json`);
+
+    // Registering afresh is only half of it: the old row has to stop being
+    // active, or the next lookup finds it again.
+    expect(await store.registrations.findActive("tenant_a", issuer.id)).toMatchObject({
+      clientId: `${after}/oauth/client-metadata.json`,
+    });
+    await store.close();
   });
 
   it("stands aside when the server never advertised the mechanism", async () => {
