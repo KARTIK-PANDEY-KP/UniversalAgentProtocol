@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 
-import { sha256Base64Url } from "@umg/core";
+import { sha256Base64Url } from "@uap/core";
 
 export interface PkcePair {
   verifier: string;

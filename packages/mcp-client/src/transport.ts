@@ -3,7 +3,7 @@ import {
   type JsonRpcNotification,
   type JsonRpcRequest,
   type JsonRpcResponse,
-} from "@umg/core";
+} from "@uap/core";
 
 export interface TransportHooks {
   onNotification?(notification: JsonRpcNotification): void;

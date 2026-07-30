@@ -19,7 +19,7 @@ export interface BackupManifest {
 const MANIFEST = "manifest.json";
 
 export function defaultStateDir(env: NodeJS.ProcessEnv, home: string): string {
-  return env["UMG_HOME"] ?? join(home, ".universal-mcp-gateway");
+  return env["UAP_HOME"] ?? join(home, ".uap");
 }
 
 /**

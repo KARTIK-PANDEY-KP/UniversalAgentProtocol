@@ -4,9 +4,9 @@ import {
   type McpInitializeResult,
   type TransportType,
   type UpstreamRequestTarget,
-} from "@umg/core";
-import type { Logger, MetricsRegistry } from "@umg/observability";
-import type { SafeFetcher } from "@umg/security";
+} from "@uap/core";
+import type { Logger, MetricsRegistry } from "@uap/observability";
+import type { SafeFetcher } from "@uap/security";
 
 import { UpstreamMcpConnection } from "./connection.js";
 import { McpUnauthorizedError } from "./transport.js";

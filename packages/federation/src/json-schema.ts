@@ -1,4 +1,4 @@
-import { isRecord, type JsonObject } from "@umg/core";
+import { isRecord, type JsonObject } from "@uap/core";
 
 export interface ValidationIssue {
   path: string;

@@ -3,7 +3,7 @@ import {
   DEFAULT_BACKGROUND_CONFIG,
   Gateway,
   type BackgroundWorkerConfig,
-} from "@umg/gateway";
+} from "@uap/gateway";
 
 /**
  * Runs the periodic maintenance jobs against the same database the API serves

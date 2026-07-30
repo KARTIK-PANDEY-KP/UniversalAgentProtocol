@@ -7,19 +7,19 @@ const pkg = (name: string): string =>
 export default defineConfig({
   resolve: {
     alias: {
-      "@umg/core": pkg("core"),
-      "@umg/observability": pkg("observability"),
-      "@umg/security": pkg("security"),
-      "@umg/storage": pkg("storage"),
-      "@umg/oauth": pkg("oauth"),
-      "@umg/mcp-client": pkg("mcp-client"),
-      "@umg/mcp-server": pkg("mcp-server"),
-      "@umg/federation": pkg("federation"),
-      "@umg/gateway": pkg("gateway"),
-      "@umg/migration-cli": fileURLToPath(
+      "@uap/core": pkg("core"),
+      "@uap/observability": pkg("observability"),
+      "@uap/security": pkg("security"),
+      "@uap/storage": pkg("storage"),
+      "@uap/oauth": pkg("oauth"),
+      "@uap/mcp-client": pkg("mcp-client"),
+      "@uap/mcp-server": pkg("mcp-server"),
+      "@uap/federation": pkg("federation"),
+      "@uap/gateway": pkg("gateway"),
+      "@uap/migration-cli": fileURLToPath(
         new URL("./apps/migration-cli/src/index.ts", import.meta.url),
       ),
-      "@umg/conformance": fileURLToPath(
+      "@uap/conformance": fileURLToPath(
         new URL("./conformance/harness/src/index.ts", import.meta.url),
       ),
     },

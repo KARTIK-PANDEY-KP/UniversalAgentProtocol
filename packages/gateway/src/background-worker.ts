@@ -1,5 +1,5 @@
-import { clampText, type UpstreamConnection } from "@umg/core";
-import { Metric } from "@umg/observability";
+import { clampText, type UpstreamConnection } from "@uap/core";
+import { Metric } from "@uap/observability";
 
 import type { GatewayServices } from "./gateway.js";
 

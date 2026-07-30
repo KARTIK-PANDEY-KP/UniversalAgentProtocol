@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { LATEST_PROTOCOL_VERSION, sha256Hex } from "@umg/core";
+import { LATEST_PROTOCOL_VERSION, sha256Hex } from "@uap/core";
 import {
   GatewayFixture,
   GatewayMcpClient,
@@ -9,7 +9,7 @@ import {
   completeAuthorization,
   connectUpstream,
   startProtectedUpstream,
-} from "@umg/conformance";
+} from "@uap/conformance";
 
 /**
  * Section 19.7. The gateway fetches user-supplied URLs, holds every upstream

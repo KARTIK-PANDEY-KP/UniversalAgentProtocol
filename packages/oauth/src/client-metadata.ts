@@ -1,5 +1,5 @@
-import { GatewayError, type ClientIdMetadataDocument } from "@umg/core";
-import { parseAbsoluteUrl } from "@umg/security";
+import { GatewayError, type ClientIdMetadataDocument } from "@uap/core";
+import { parseAbsoluteUrl } from "@uap/security";
 
 export interface GatewayIdentity {
   /** Public origin of this gateway deployment, for example `https://gateway.example.com`. */
@@ -22,11 +22,11 @@ export function gatewayIdentityFromBaseUrl(
   const origin = baseUrl.replace(/\/+$/u, "");
   return {
     baseUrl: origin,
-    clientName: "Universal MCP Gateway",
+    clientName: "Universal Agent Protocol Gateway",
     clientMetadataUrl: `${origin}/oauth/client-metadata.json`,
     redirectUri: `${origin}/oauth/callback`,
     jwksUri: `${origin}/.well-known/jwks.json`,
-    softwareId: "universal-mcp-gateway",
+    softwareId: "uap-gateway",
     softwareVersion: "0.1.0",
     supportsPrivateKeyJwt: true,
     ...overrides,

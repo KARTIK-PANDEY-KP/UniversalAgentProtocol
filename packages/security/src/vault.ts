@@ -1,5 +1,5 @@
-import { GatewayError } from "@umg/core";
-import { Metric, type MetricsRegistry } from "@umg/observability";
+import { GatewayError } from "@uap/core";
+import { Metric, type MetricsRegistry } from "@uap/observability";
 
 import {
   decodeEnvelope,
@@ -29,7 +29,10 @@ export interface EncryptionContext {
 }
 
 function aadFor(context: EncryptionContext): Buffer {
-  return Buffer.from(`umg:v1:${context.tenantId}:${context.purpose}`, "utf8");
+  // The prefix is a domain separator, not a label: it is sealed into every
+  // ciphertext, so changing it makes stored credentials undecryptable. Bump the
+  // version and rewrap rather than editing it in place.
+  return Buffer.from(`uap:v1:${context.tenantId}:${context.purpose}`, "utf8");
 }
 
 export class CredentialVault {

@@ -47,6 +47,33 @@ what matters when you deploy.
 - Downstream authentication moved from shared API keys to the gateway's own
   OAuth resource, so each application has an attributable identity.
 
+## Render
+
+[render.yaml](../../render.yaml) describes a single web service. `HOST` already
+defaults to `0.0.0.0` and the port is read from `PORT`, so nothing about the
+bind address needs changing.
+
+Free instances have no disk and an ephemeral filesystem, so a SQLite file goes
+with the container on every deploy, restart, and the spin-down that follows
+fifteen idle minutes — taking the OAuth grants with it and leaving every
+upstream to be authorized again by hand. Set `GATEWAY_DATABASE_URL` to a
+Postgres somewhere else and the problem goes away without a paid disk, because
+the state is no longer on the instance at all.
+
+Set `GATEWAY_DATABASE_SCHEMA` as well when that Postgres is a hosted product
+that publishes a schema over HTTP. Supabase serves `public` through PostgREST,
+and these tables hold credentials.
+
+The background worker is the remaining gap: Render does not offer one on the
+free plan. Nothing breaks, because the token manager refreshes an expired
+token on the call that needs it, so a missing worker costs latency on the
+first call after an expiry rather than correctness. What is lost is the
+periodic work with no request to hang off — catalogue resync, session reaping
+and key rewrap. Run `node apps/background-worker/dist/main.js --once` from a
+cron job to get them back, or give it its own service, which is now possible:
+a worker elsewhere shares Postgres with the API, and the two coordinate
+through the lock table rather than a shared file.
+
 ## Endpoints
 
 **Public.** `GET /healthz`, `GET /metrics`,

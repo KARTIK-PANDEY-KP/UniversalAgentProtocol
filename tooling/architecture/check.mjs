@@ -212,7 +212,7 @@ for (const module of modules.values()) {
       }
 
       // A workspace module.
-      if (specifier.startsWith("@umg/")) {
+      if (specifier.startsWith("@uap/")) {
         const [scope, name, ...rest] = specifier.split("/");
         const target = `${scope}/${name}`;
         if (rest.length > 0) {

@@ -1,13 +1,13 @@
 {
-  "name": "@umg/gateway-api",
+  "name": "@uap/gateway-api",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "main": "./dist/main.js",
   "bin": {
-    "umg-gateway": "./dist/main.js"
+    "uap-gateway": "./dist/main.js"
   },
   "dependencies": {
-    "@umg/gateway": "workspace:*"
+    "@uap/gateway": "workspace:*"
   }
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { classifyTool } from "@umg/federation";
+import { classifyTool } from "@uap/federation";
 
 describe("tool classification", () => {
   it("takes the server's explicit hints over the wording", () => {

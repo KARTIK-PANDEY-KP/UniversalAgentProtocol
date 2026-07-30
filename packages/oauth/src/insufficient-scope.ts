@@ -1,4 +1,4 @@
-import { parseScopes } from "@umg/core";
+import { parseScopes } from "@uap/core";
 
 import { parseWwwAuthenticate, selectBearerChallenge } from "./www-authenticate.js";
 

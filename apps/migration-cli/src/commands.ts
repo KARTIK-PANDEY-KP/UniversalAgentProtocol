@@ -1,4 +1,4 @@
-import { canonicalizeUrl } from "@umg/security";
+import { canonicalizeUrl } from "@uap/security";
 
 import { BackupSet, listBackups, restoreBackup } from "./backup.js";
 import type { PathContext } from "./clients.js";
@@ -81,7 +81,7 @@ export async function importCommand(
     context.out.line("Authorize each protected server once, in a browser:");
     for (const line of pending) context.out.line(line);
     context.out.line("");
-    context.out.line("Then run `umg-migrate status` to confirm, and `umg-migrate install`.");
+    context.out.line("Then run `uap-migrate status` to confirm, and `uap-migrate install`.");
   }
   return outcomes.some((outcome) => outcome.status === "FAILED") ? EXIT_FAILED : EXIT_OK;
 }
@@ -97,7 +97,7 @@ export async function statusCommand(
   if (context.json) {
     context.out.json({ connections });
   } else if (connections.length === 0) {
-    context.out.line("The gateway has no upstream connections yet. Run `umg-migrate import`.");
+    context.out.line("The gateway has no upstream connections yet. Run `uap-migrate import`.");
   } else {
     for (const connection of connections) {
       const tools = `${connection.tool_count} tool${connection.tool_count === 1 ? "" : "s"}`;
@@ -235,7 +235,7 @@ async function writePlan(
   const manifest = await backups.commit();
   if (manifest && !context.json) {
     context.out.line("");
-    context.out.line(`Saved a backup as ${manifest.id}; undo with \`umg-migrate rollback\`.`);
+    context.out.line(`Saved a backup as ${manifest.id}; undo with \`uap-migrate rollback\`.`);
   }
   return EXIT_OK;
 }

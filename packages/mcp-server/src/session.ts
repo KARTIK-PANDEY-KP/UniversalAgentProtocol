@@ -12,7 +12,7 @@ import {
   type McpClientCapabilities,
   type McpLogLevel,
   type RequestId,
-} from "@umg/core";
+} from "@uap/core";
 
 import type { EventStreamWriter } from "./http.js";
 

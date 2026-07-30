@@ -6,7 +6,7 @@ import {
   newId,
   toGatewayError,
   type GatewayError,
-} from "@umg/core";
+} from "@uap/core";
 import {
   bearerChallengeHeader,
   readBody,
@@ -14,12 +14,12 @@ import {
   sendJson,
   type AuthenticationOutcome,
   type NorthboundPrincipal,
-} from "@umg/mcp-server";
+} from "@uap/mcp-server";
 import {
   buildClientIdMetadataDocument,
   type OAuthCallbackInput,
-} from "@umg/oauth";
-import { canonicalizeUrl, isReturnUrlAllowed } from "@umg/security";
+} from "@uap/oauth";
+import { canonicalizeUrl, isReturnUrlAllowed } from "@uap/security";
 
 import { parseJsonBody, type GatewayServices } from "./gateway.js";
 import type { Router } from "./router.js";
@@ -94,7 +94,7 @@ export function registerRoutes(
         authorization_servers: config.gatewayAuthorizationServers,
         scopes_supported: config.gatewayScopesSupported,
         bearer_methods_supported: ["header"],
-        resource_name: "Universal MCP Gateway",
+        resource_name: "Universal Agent Protocol Gateway",
         ...(config.documentationUri === null
           ? {}
           : { resource_documentation: config.documentationUri }),

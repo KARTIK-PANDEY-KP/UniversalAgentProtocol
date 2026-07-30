@@ -10,10 +10,10 @@ import {
   type OAuthIssuerRecord,
   type RegistrationType,
   type TokenEndpointAuthMethod,
-} from "@umg/core";
-import { Metric, type Logger, type MetricsRegistry } from "@umg/observability";
-import type { CredentialVault, SafeFetcher, SigningKeyStore } from "@umg/security";
-import type { GatewayStore } from "@umg/storage";
+} from "@uap/core";
+import { Metric, type Logger, type MetricsRegistry } from "@uap/observability";
+import type { CredentialVault, SafeFetcher, SigningKeyStore } from "@uap/security";
+import type { GatewayStore } from "@uap/storage";
 
 import {
   assertValidClientIdMetadataUrl,

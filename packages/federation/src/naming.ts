@@ -1,4 +1,4 @@
-import { isRecord, sha256Hex, type JsonObject, type JsonValue } from "@umg/core";
+import { isRecord, sha256Hex, type JsonObject, type JsonValue } from "@uap/core";
 
 const MAX_TOOL_NAME = 128;
 const MAX_ALIAS = 40;

@@ -1,4 +1,4 @@
-import { isRecord } from "@umg/core";
+import { isRecord } from "@uap/core";
 
 /**
  * Property names whose values must never reach a log sink, a trace, or a

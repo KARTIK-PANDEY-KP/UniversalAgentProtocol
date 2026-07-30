@@ -12,13 +12,13 @@ was recorded.
 - Where logs and metrics go. This module produces records; the deployable in
   `apps/` decides the sink.
 - Audit events. Those are a product feature with a table behind them and belong
-  to `@umg/federation`, not to telemetry.
+  to `@uap/federation`, not to telemetry.
 - Deciding what is a secret. `redact.ts` knows the shapes of the credentials
   this system handles; a module that invents a new one extends the redactor.
 
 ## Public interface
 
-`@umg/observability`, from `src/index.ts`.
+`@uap/observability`, from `src/index.ts`.
 
 - `logger.ts` — `Logger`, the JSON-line implementation, and child loggers that
   carry a bound context.
@@ -29,7 +29,7 @@ was recorded.
 
 ## Depends on
 
-- `@umg/core` — for `Clock` and the JSON types.
+- `@uap/core` — for `Clock` and the JSON types.
 
 ## Data ownership
 
@@ -51,7 +51,7 @@ No tables.
 ## Testing
 
 ```bash
-pnpm --filter @umg/observability test
+pnpm --filter @uap/observability test
 ```
 
 ## Owners

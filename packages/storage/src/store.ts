@@ -16,8 +16,8 @@ import type {
   UpstreamConnection,
   UpstreamSessionRecord,
   User,
-} from "@umg/core";
-import type { DistributedLock } from "@umg/security";
+} from "@uap/core";
+import type { DistributedLock } from "@uap/security";
 
 export interface TokenUpdate {
   connectionId: string;
@@ -228,5 +228,7 @@ export interface GatewayStore {
   readonly audit: AuditRepository;
   readonly preconfiguredClients: PreconfiguredClientRepository;
   readonly locks: DistributedLock;
-  close(): void;
+  /** Creates the schema if it is not there. Safe to call on every boot. */
+  init(): Promise<void>;
+  close(): Promise<void>;
 }

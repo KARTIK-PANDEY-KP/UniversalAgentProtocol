@@ -16,11 +16,11 @@ import {
 import { GatewayControlPlane } from "./gateway-client.js";
 
 const DEFAULT_ENTRY_NAME = "universal-gateway";
-const DEFAULT_KEY_VARIABLE = "UMG_GATEWAY_API_KEY";
+const DEFAULT_KEY_VARIABLE = "UAP_GATEWAY_API_KEY";
 
-const USAGE = `umg-migrate - move existing remote MCP servers behind the Universal MCP Gateway
+const USAGE = `uap-migrate - move existing remote MCP servers behind the Universal Agent Protocol Gateway
 
-Usage: umg-migrate <command> [options]
+Usage: uap-migrate <command> [options]
 
 Commands:
   discover    List the MCP servers configured in your applications
@@ -49,11 +49,11 @@ Options:
   --help                Show this message
 
 A typical migration:
-  umg-migrate discover
-  umg-migrate import         # then open each authorization link once
-  umg-migrate status
-  umg-migrate install
-  umg-migrate prune --yes    # optional, after everything works
+  uap-migrate discover
+  uap-migrate import         # then open each authorization link once
+  uap-migrate status
+  uap-migrate install
+  uap-migrate prune --yes    # optional, after everything works
 `;
 
 interface ParsedArgs {

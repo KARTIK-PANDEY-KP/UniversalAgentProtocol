@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { GatewayError } from "@umg/core";
+import { GatewayError } from "@uap/core";
 
-import { RateLimiter } from "@umg/security";
+import { RateLimiter } from "@uap/security";
 
 describe("RateLimiter", () => {
   function limiter(limit: number, burst?: number) {

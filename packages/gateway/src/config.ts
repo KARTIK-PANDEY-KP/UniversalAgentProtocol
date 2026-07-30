@@ -1,5 +1,5 @@
-import { GatewayError, isToolRiskLevel, parseScopes, type ToolRiskLevel } from "@umg/core";
-import type { LogLevel } from "@umg/observability";
+import { GatewayError, isToolRiskLevel, parseScopes, type ToolRiskLevel } from "@uap/core";
+import type { LogLevel } from "@uap/observability";
 
 export interface ApiKeyPrincipal {
   /** Stored as the raw key for local development; hash in production. */
@@ -16,6 +16,14 @@ export interface GatewayConfig {
   host: string;
   port: number;
   databaseFile: string;
+  /** A Postgres connection string. Set, it is used instead of the file. */
+  databaseUrl: string | null;
+  /**
+   * Postgres schema to own the tables. Worth setting away from `public` on a
+   * host that publishes that schema over HTTP, which several managed Postgres
+   * products do.
+   */
+  databaseSchema: string | null;
   /** `kid:base64key[,kid:base64key]`; the first entry is the active key. */
   encryptionKeyRing: string | null;
   /**
@@ -155,6 +163,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): GatewayConfig 
     host: env["HOST"] ?? DEFAULTS.host,
     port: Number(env["PORT"] ?? DEFAULTS.port),
     databaseFile: env["GATEWAY_DATABASE_FILE"] ?? DEFAULTS.databaseFile,
+    databaseUrl: env["GATEWAY_DATABASE_URL"] ?? null,
+    databaseSchema: env["GATEWAY_DATABASE_SCHEMA"] ?? null,
     encryptionKeyRing: env["GATEWAY_ENCRYPTION_KEYS"] ?? null,
     // Newlines survive an environment variable badly, so accept the escaped form.
     signingKeyPem: env["GATEWAY_SIGNING_KEY"]?.replaceAll("\\n", "\n") ?? null,

@@ -9,7 +9,7 @@ package names — `common`, `utils`, `helpers`, `all-types`,
 `shared-business-logic` — because such names describe no capability and so
 attract anything.
 
-`@umg/core` is close enough to that list to deserve an answer. It holds the
+`@uap/core` is close enough to that list to deserve an answer. It holds the
 JSON-RPC and MCP wire types, the OAuth wire types, the persisted record shapes,
 `GatewayError`, and a small set of pure helpers.
 
@@ -31,7 +31,7 @@ Keep the package named `core`, and defend it with rules rather than a rename.
 
 ## Alternatives
 
-**Rename to `@umg/contracts`.** More precise about the largest part of the
+**Rename to `@uap/contracts`.** More precise about the largest part of the
 contents, and a lie about the rest — the helpers are not contracts. Also a
 rename touching every file in the repository, producing exactly the enormous
 unreviewable diff this standard warns against, in exchange for a word.

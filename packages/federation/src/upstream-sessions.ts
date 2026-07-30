@@ -8,12 +8,12 @@ import {
   type McpClientCapabilities,
   type McpImplementation,
   type UpstreamConnection,
-} from "@umg/core";
-import { UpstreamMcpConnection } from "@umg/mcp-client";
-import { Metric, type Logger, type MetricsRegistry } from "@umg/observability";
-import type { CredentialVault, SafeFetcher } from "@umg/security";
-import type { GatewayStore } from "@umg/storage";
-import type { OAuthTokenManager } from "@umg/oauth";
+} from "@uap/core";
+import { UpstreamMcpConnection } from "@uap/mcp-client";
+import { Metric, type Logger, type MetricsRegistry } from "@uap/observability";
+import type { CredentialVault, SafeFetcher } from "@uap/security";
+import type { GatewayStore } from "@uap/storage";
+import type { OAuthTokenManager } from "@uap/oauth";
 
 /** Session key used for gateway-internal work such as catalogue discovery. */
 export const CATALOGUE_SESSION = "__catalogue__";

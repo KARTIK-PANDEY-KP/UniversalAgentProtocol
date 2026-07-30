@@ -6,9 +6,9 @@ import {
   parseScopes,
   type Clock,
   type JsonObject,
-} from "@umg/core";
-import type { Logger } from "@umg/observability";
-import { canonicalizeUrl, sameIssuer, type SafeFetcher } from "@umg/security";
+} from "@uap/core";
+import type { Logger } from "@uap/observability";
+import { canonicalizeUrl, sameIssuer, type SafeFetcher } from "@uap/security";
 
 import type { OAuthDiscoveryService } from "./discovery.js";
 

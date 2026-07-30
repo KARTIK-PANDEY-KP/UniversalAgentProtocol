@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { LATEST_PROTOCOL_VERSION } from "@umg/core";
+import { LATEST_PROTOCOL_VERSION } from "@uap/core";
 import {
   GatewayFixture,
   GatewayMcpClient,
@@ -9,7 +9,7 @@ import {
   startProtectedUpstream,
   type GatewayMcpClientOptions,
   type ProtectedUpstream,
-} from "@umg/conformance";
+} from "@uap/conformance";
 
 /**
  * Section 19.6. Each profile below is a plain remote MCP configuration of the
@@ -106,7 +106,7 @@ describe("client compatibility", () => {
 
       const initialize = await client.initialize();
       expect(initialize["serverInfo"]).toMatchObject({
-        name: "universal-mcp-gateway",
+        name: "uap-gateway",
       });
       expect(initialize["protocolVersion"]).toBe(
         profile.options.protocolVersion ?? LATEST_PROTOCOL_VERSION,

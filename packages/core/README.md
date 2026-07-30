@@ -24,7 +24,7 @@ underneath every business rule in the repository.
 
 ## Public interface
 
-`@umg/core`, from `src/index.ts`.
+`@uap/core`, from `src/index.ts`.
 
 - `json-rpc.ts` — `JsonValue`, `JsonObject`, request/response/notification
   shapes, and the JSON-RPC error codes.
@@ -50,7 +50,7 @@ Nothing.
 
 ## Data ownership
 
-No tables. `domain.ts` declares the record shapes; `@umg/storage` owns the
+No tables. `domain.ts` declares the record shapes; `@uap/storage` owns the
 schema that stores them and is the only module that may issue SQL.
 
 ## Entry points
@@ -71,7 +71,7 @@ schema that stores them and is the only module that may issue SQL.
 ## Testing
 
 ```bash
-pnpm --filter @umg/core test
+pnpm --filter @uap/core test
 ```
 
 Most of this module is types, and is tested by the modules that use it.

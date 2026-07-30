@@ -1,5 +1,5 @@
 {
-  "name": "@umg/conformance",
+  "name": "@uap/conformance",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -12,8 +12,8 @@
     }
   },
   "dependencies": {
-    "@umg/core": "workspace:*",
-    "@umg/gateway": "workspace:*",
-    "@umg/observability": "workspace:*"
+    "@uap/core": "workspace:*",
+    "@uap/gateway": "workspace:*",
+    "@uap/observability": "workspace:*"
   }
 }

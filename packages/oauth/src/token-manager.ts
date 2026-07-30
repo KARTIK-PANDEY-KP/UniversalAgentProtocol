@@ -14,16 +14,16 @@ import {
   type OAuthTransaction,
   type UpstreamConnection,
   type UpstreamRequestTarget,
-} from "@umg/core";
-import { Metric, type Logger, type MetricsRegistry } from "@umg/observability";
+} from "@uap/core";
+import { Metric, type Logger, type MetricsRegistry } from "@uap/observability";
 import {
   CircuitBreaker,
   canonicalIssuer,
   sameIssuer,
   type CredentialVault,
   type SigningKeyStore,
-} from "@umg/security";
-import type { GatewayStore } from "@umg/storage";
+} from "@uap/security";
+import type { GatewayStore } from "@uap/storage";
 
 import type { GatewayIdentity } from "./client-metadata.js";
 import {

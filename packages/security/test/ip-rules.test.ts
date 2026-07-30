@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { classifyAddress } from "@umg/security";
+import { classifyAddress } from "@uap/security";
 
 describe("classifying IPv4", () => {
   it.each([

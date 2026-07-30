@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 
-import { canonicalizeUrl } from "@umg/security";
+import { canonicalizeUrl } from "@uap/security";
 
 import { candidateLocations, type ConfigLocation, type PathContext } from "./clients.js";
 import {

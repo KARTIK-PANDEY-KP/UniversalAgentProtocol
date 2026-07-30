@@ -7,8 +7,8 @@ import {
   connectUpstream,
   startProtectedUpstream,
   type ProtectedUpstream,
-} from "@umg/conformance";
-import type { MockAuthorizationServerOptions } from "@umg/conformance";
+} from "@uap/conformance";
+import type { MockAuthorizationServerOptions } from "@uap/conformance";
 
 /**
  * Section 19.1 of the brief: the gateway must obtain a client identity from

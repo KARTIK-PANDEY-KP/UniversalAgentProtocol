@@ -7,9 +7,9 @@ import {
   type JsonRpcRequest,
   type JsonRpcResponse,
   type UpstreamRequestTarget,
-} from "@umg/core";
-import type { Logger } from "@umg/observability";
-import type { SafeFetcher, SafeResponse } from "@umg/security";
+} from "@uap/core";
+import type { Logger } from "@uap/observability";
+import type { SafeFetcher, SafeResponse } from "@uap/security";
 
 import { readSseEvents } from "./sse.js";
 import {

@@ -12,15 +12,15 @@ It handles the protocol. It does not know what a tool is for.
 ## Does not own
 
 - Any MCP method's meaning. Requests are handed to a handler that
-  `@umg/federation` supplies.
+  `@uap/federation` supplies.
 - Authentication. The composition layer authenticates a request before this
   module sees it.
 - Upstream anything. This module only ever faces downstream clients, and
-  routing to upstreams is `@umg/federation`.
+  routing to upstreams is `@uap/federation`.
 
 ## Public interface
 
-`@umg/mcp-server`, from `src/index.ts`.
+`@uap/mcp-server`, from `src/index.ts`.
 
 - `http.ts` — the `/mcp` endpoint: POST for requests, GET for the server-to-
   client stream, DELETE to end a session.
@@ -30,14 +30,14 @@ It handles the protocol. It does not know what a tool is for.
 
 ## Depends on
 
-- `@umg/core`
-- `@umg/observability`
-- `@umg/security`
+- `@uap/core`
+- `@uap/observability`
+- `@uap/security`
 
 ## Data ownership
 
 Logical owner of `downstream_mcp_sessions`, reached through a repository
-declared in `@umg/storage`.
+declared in `@uap/storage`.
 
 ## Entry points
 
@@ -58,7 +58,7 @@ declared in `@umg/storage`.
 ## Testing
 
 ```bash
-pnpm --filter @umg/conformance-tests test
+pnpm --filter @uap/conformance-tests test
 ```
 
 The client-compatibility tests drive this module the way real clients do,

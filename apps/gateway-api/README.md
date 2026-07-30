@@ -7,7 +7,7 @@ environment, builds a gateway, binds an HTTP listener, and shuts down cleanly
 on a signal.
 
 It is deliberately thin. Everything it does beyond process management is a call
-into `@umg/gateway`.
+into `@uap/gateway`.
 
 ## Does not own
 
@@ -19,18 +19,18 @@ None. This is a deployable, not a library, and no module may depend on it.
 
 ## Depends on
 
-- `@umg/gateway`
+- `@uap/gateway`
 
 ## Data ownership
 
-No tables. It opens the store that `@umg/storage` owns.
+No tables. It opens the store that `@uap/storage` owns.
 
 ## Entry points
 
 `src/main.ts`.
 
 ```bash
-pnpm --filter @umg/gateway-api start
+pnpm --filter @uap/gateway-api start
 ```
 
 ## Invariants
@@ -45,7 +45,7 @@ pnpm --filter @umg/gateway-api start
 ## Testing
 
 ```bash
-pnpm --filter @umg/conformance-tests test
+pnpm --filter @uap/conformance-tests test
 ```
 
 The conformance harness starts this deployable the way an operator would.

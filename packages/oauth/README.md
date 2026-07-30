@@ -16,16 +16,16 @@ at runtime.
 
 ## Does not own
 
-- Which upstreams exist or which scopes they need. That is `@umg/federation`.
+- Which upstreams exist or which scopes they need. That is `@uap/federation`.
 - Storage. Issuers, registrations, transactions and tokens are persisted
-  through repositories `@umg/storage` declares.
-- Outbound HTTP. Every request goes through `@umg/security`'s `safeFetch`.
+  through repositories `@uap/storage` declares.
+- Outbound HTTP. Every request goes through `@uap/security`'s `safeFetch`.
 - Deciding who a user is. The resource server verifies a token and reports what
   it says; provisioning belongs to the composition layer.
 
 ## Public interface
 
-`@umg/oauth`, from `src/index.ts`.
+`@uap/oauth`, from `src/index.ts`.
 
 - `discovery.ts` — protected resource metadata (RFC 9728) and authorization
   server metadata (RFC 8414), validated and cached.
@@ -48,16 +48,16 @@ at runtime.
 
 ## Depends on
 
-- `@umg/core`
-- `@umg/observability`
-- `@umg/security`
-- `@umg/storage`
+- `@uap/core`
+- `@uap/observability`
+- `@uap/security`
+- `@uap/storage`
 
 ## Data ownership
 
 Logical owner of `oauth_issuers`, `oauth_client_registrations`,
 `oauth_transactions`, `preconfigured_oauth_clients` and `dpop_keys`, all
-reached through repositories declared in `@umg/storage`.
+reached through repositories declared in `@uap/storage`.
 
 ## Entry points
 
@@ -85,8 +85,8 @@ reached through repositories declared in `@umg/storage`.
 ## Testing
 
 ```bash
-pnpm --filter @umg/oauth test
-pnpm --filter @umg/conformance-tests test
+pnpm --filter @uap/oauth test
+pnpm --filter @uap/conformance-tests test
 ```
 
 The interesting cases are in the conformance suite, which runs against mock

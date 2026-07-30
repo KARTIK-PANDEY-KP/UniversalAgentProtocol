@@ -1,5 +1,5 @@
 {
-  "name": "@umg/gateway",
+  "name": "@uap/gateway",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -12,12 +12,12 @@
     }
   },
   "dependencies": {
-    "@umg/core": "workspace:*",
-    "@umg/federation": "workspace:*",
-    "@umg/mcp-server": "workspace:*",
-    "@umg/oauth": "workspace:*",
-    "@umg/observability": "workspace:*",
-    "@umg/security": "workspace:*",
-    "@umg/storage": "workspace:*"
+    "@uap/core": "workspace:*",
+    "@uap/federation": "workspace:*",
+    "@uap/mcp-server": "workspace:*",
+    "@uap/oauth": "workspace:*",
+    "@uap/observability": "workspace:*",
+    "@uap/security": "workspace:*",
+    "@uap/storage": "workspace:*"
   }
 }

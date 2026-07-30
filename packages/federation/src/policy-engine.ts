@@ -4,7 +4,7 @@ import {
   type JsonObject,
   type ToolRiskLevel,
   type UpstreamConnection,
-} from "@umg/core";
+} from "@uap/core";
 
 import { validateAgainstSchema } from "./json-schema.js";
 

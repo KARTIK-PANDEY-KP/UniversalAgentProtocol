@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { GatewayError } from "@umg/core";
+import { GatewayError } from "@uap/core";
 
 export async function readBody(
   req: IncomingMessage,

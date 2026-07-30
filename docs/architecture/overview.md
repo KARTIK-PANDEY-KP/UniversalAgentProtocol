@@ -9,14 +9,14 @@ them.
 Cursor / Claude Code / Codex / cloud agents
         │  MCP client  →  MCP server
         ▼
-┌──────────────────────────────────────────────┐
-│ Universal MCP Gateway                        │
-│                                              │
-│  northbound MCP server   (packages/mcp-server)
-│  tool federation         (packages/federation)
-│  OAuth engine + vault    (packages/oauth, packages/security)
-│  southbound MCP client   (packages/mcp-client)
-└──────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│ Universal Agent Protocol gateway                             │
+│                                                              │
+│  northbound MCP server   (packages/mcp-server)               │
+│  tool federation         (packages/federation)               │
+│  OAuth engine + vault    (packages/oauth, packages/security) │
+│  southbound MCP client   (packages/mcp-client)               │
+└──────────────────────────────────────────────────────────────┘
         │  MCP client  →  MCP server
         │  OAuth client → authorization server
         ▼
@@ -190,3 +190,32 @@ their predecessor atomically; the old one is never left usable in storage.
 
 The background worker uses both paths, so a scheduled renewal running beside a
 live request cannot rotate a refresh token twice.
+
+## Deployment topology
+
+Two long-running processes and one database. `apps/migration-cli` is a tool an
+operator runs, not a service.
+
+Both mechanisms above are database-backed rather than in-memory — a lease row
+and a compare-and-swap, not a mutex — which is what makes the process count
+independent of the replica count. Any number of API replicas and worker
+replicas can run against one database.
+
+Which database is a deployment's choice, and the choice is the topology.
+`GATEWAY_DATABASE_FILE` gives SQLite, where "the same database" means "the same
+file" and therefore one machine: two processes on one VM, and nothing beyond
+it. `GATEWAY_DATABASE_URL` gives Postgres, where the same sentence means a host
+and a port, and the three services — API, worker, database — become independent
+of each other. Neither choice is visible above `packages/storage`.
+
+A file is the right answer for a single instance and for tests, where the
+alternative is a server to run. It stops being the right answer at the second
+replica, and on a platform whose storage attaches to exactly one service it was
+never available; see the Render notes in
+[operations/running.md](../operations/running.md).
+
+The distinction is not only about scale. Under SQLite every store call
+completes without yielding, which hides races that a real round trip exposes —
+the catalogue writer lock in `packages/federation` exists because running the
+conformance suite against Postgres found two rediscoveries interleaving. Both
+backends are worth running the suite against for that reason, and both are.

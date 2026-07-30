@@ -15,7 +15,7 @@ credential.
 
 - Unit-level coverage. A rule with no protocol surface is tested inside its own
   module, next to the code.
-- The mocks and fixtures, which belong to `@umg/conformance`.
+- The mocks and fixtures, which belong to `@uap/conformance`.
 
 ## Public interface
 
@@ -23,10 +23,10 @@ None. This module is only ever run, never imported.
 
 ## Depends on
 
-- `@umg/conformance` — the harness.
-- `@umg/core`, `@umg/security`, `@umg/federation`, `@umg/gateway` — for the
+- `@uap/conformance` — the harness.
+- `@uap/core`, `@uap/security`, `@uap/federation`, `@uap/gateway` — for the
   types and services under test.
-- `@umg/migration-cli` — driven in-process by `migration.test.ts`.
+- `@uap/migration-cli` — driven in-process by `migration.test.ts`.
 
 ## Data ownership
 
@@ -68,7 +68,7 @@ One file per capability:
 ## Testing
 
 ```bash
-pnpm --filter @umg/conformance-tests test
+pnpm --filter @uap/conformance-tests test
 ```
 
 ## Owners

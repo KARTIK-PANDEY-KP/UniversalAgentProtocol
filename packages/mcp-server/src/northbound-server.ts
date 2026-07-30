@@ -25,9 +25,9 @@ import {
   type McpImplementation,
   type McpInitializeParams,
   type McpInitializeResult,
-} from "@umg/core";
-import type { Logger, MetricsRegistry } from "@umg/observability";
-import { isOriginAllowed } from "@umg/security";
+} from "@uap/core";
+import type { Logger, MetricsRegistry } from "@uap/observability";
+import { isOriginAllowed } from "@uap/security";
 
 import {
   headerValue,

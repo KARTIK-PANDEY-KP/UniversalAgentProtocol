@@ -32,8 +32,8 @@ common cases.
 a change that has not found its home yet. It is also a change nobody can review
 properly.
 
-**Reach other modules through their public interface.** `@umg/oauth`, not
-`@umg/oauth/dist/dpop.js`, and never a relative path across a boundary. If what
+**Reach other modules through their public interface.** `@uap/oauth`, not
+`@uap/oauth/dist/dpop.js`, and never a relative path across a boundary. If what
 you need is not exported, exporting it is a deliberate decision by that module
 — which makes it a conversation with its owner, and that is the point.
 

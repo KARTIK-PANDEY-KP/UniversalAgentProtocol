@@ -1,4 +1,4 @@
-import { clampText, isRecord, type OAuthErrorResponse } from "@umg/core";
+import { clampText, isRecord, type OAuthErrorResponse } from "@uap/core";
 
 export class OAuthProtocolError extends Error {
   readonly error: string;

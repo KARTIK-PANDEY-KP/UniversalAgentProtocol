@@ -7,7 +7,7 @@ import {
   startProtectedUpstream,
   thumbprintOf,
   type ProtectedUpstream,
-} from "@umg/conformance";
+} from "@uap/conformance";
 
 /**
  * RFC 9449. The gateway holds a lot of other people's tokens, so where an

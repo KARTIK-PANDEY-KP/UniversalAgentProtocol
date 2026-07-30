@@ -1,8 +1,26 @@
+import { randomBytes } from "node:crypto";
 import { createServer } from "node:net";
 import type { AddressInfo } from "node:net";
 
-import { Gateway, type GatewayConfig } from "@umg/gateway";
-import { silentSink, type LogSink } from "@umg/observability";
+import { Gateway, type GatewayConfig } from "@uap/gateway";
+import { silentSink, type LogSink } from "@uap/observability";
+
+/**
+ * The suite runs against SQLite by default and against Postgres when one is
+ * offered, which is the only way to find out whether the conformance the
+ * gateway demonstrates depends on the database underneath it.
+ *
+ * Each gateway gets a schema of its own, because these tests share tenant and
+ * connection ids and a shared schema would have them reading each other's rows.
+ */
+function databaseConfig(): Partial<GatewayConfig> {
+  const url = process.env["TEST_POSTGRES_URL"];
+  if (!url) return { databaseFile: ":memory:" };
+  return {
+    databaseUrl: url,
+    databaseSchema: `t_${randomBytes(8).toString("hex")}`,
+  };
+}
 
 export interface GatewayFixtureOptions {
   apiKey?: string;
@@ -72,7 +90,7 @@ export class GatewayFixture {
         baseUrl: this.origin,
         host: "127.0.0.1",
         port,
-        databaseFile: ":memory:",
+        ...databaseConfig(),
         logLevel: this.options.captureLogs ? "debug" : "info",
         allowHttp: true,
         allowLoopback: true,
