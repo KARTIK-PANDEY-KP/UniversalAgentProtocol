@@ -4,6 +4,7 @@ import {
   isRecord,
   isTokenEndpointAuthMethod,
   newId,
+  randomToken,
   toGatewayError,
   type GatewayError,
 } from "@uap/core";
@@ -22,6 +23,7 @@ import {
 import { canonicalizeUrl, isReturnUrlAllowed } from "@uap/security";
 
 import { parseJsonBody, type GatewayServices } from "./gateway.js";
+import { contentSecurityPolicy, managementPage } from "./management-page.js";
 import type { Router } from "./router.js";
 
 type Authenticate = (req: IncomingMessage) => Promise<AuthenticationOutcome>;
@@ -76,6 +78,38 @@ export function registerRoutes(
   router.get("/healthz", (_req, res) => {
     sendJson(res, 200, { status: "ok", version: "0.1.0" });
   });
+
+  if (config.uiEnabled) {
+    /**
+     * The management page. Served to anyone who asks, because it contains no
+     * credential: the key is typed into the browser and sent as a header by
+     * script, so an unauthenticated GET here reveals only that a gateway is
+     * running, which `/healthz` already answers.
+     */
+    router.get("/ui", (_req, res) => {
+      const nonce = randomToken(16);
+      const body = managementPage({ baseUrl: config.baseUrl, nonce });
+      res.writeHead(200, {
+        "content-type": "text/html; charset=utf-8",
+        "content-length": Buffer.byteLength(body),
+        "content-security-policy": contentSecurityPolicy(nonce),
+        "referrer-policy": "no-referrer",
+        "x-content-type-options": "nosniff",
+        // The page holds a key in session storage and drives the control
+        // plane; there is no reason for it to be in anyone's frame.
+        "x-frame-options": "DENY",
+        // A per-request nonce means the document cannot be cached, and it
+        // should not be: it is the entry point to an authenticated surface.
+        "cache-control": "no-store",
+      });
+      res.end(body);
+    });
+
+    router.get("/", (_req, res) => {
+      res.writeHead(302, { location: "/ui" });
+      res.end();
+    });
+  }
 
   router.get("/metrics", (_req, res) => {
     const body = services.metrics.render();

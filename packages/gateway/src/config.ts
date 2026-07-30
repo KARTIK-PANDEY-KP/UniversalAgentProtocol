@@ -16,6 +16,12 @@ export interface GatewayConfig {
   host: string;
   port: number;
   databaseFile: string;
+  /**
+   * Serves the management page at `/ui`. On by default: it holds no
+   * credential and reveals no more than `/healthz` does. Off is for
+   * deployments that want no HTML surface at all.
+   */
+  uiEnabled: boolean;
   /** A Postgres connection string. Set, it is used instead of the file. */
   databaseUrl: string | null;
   /**
@@ -163,6 +169,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): GatewayConfig 
     host: env["HOST"] ?? DEFAULTS.host,
     port: Number(env["PORT"] ?? DEFAULTS.port),
     databaseFile: env["GATEWAY_DATABASE_FILE"] ?? DEFAULTS.databaseFile,
+    uiEnabled: parseBool(env["GATEWAY_UI_ENABLED"], true),
     databaseUrl: env["GATEWAY_DATABASE_URL"] ?? null,
     databaseSchema: env["GATEWAY_DATABASE_SCHEMA"] ?? null,
     encryptionKeyRing: env["GATEWAY_ENCRYPTION_KEYS"] ?? null,

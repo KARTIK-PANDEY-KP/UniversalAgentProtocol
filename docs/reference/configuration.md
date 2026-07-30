@@ -12,6 +12,7 @@ All configuration is environment variables.
 | `GATEWAY_BASE_URL` | `http://127.0.0.1:8787` | Public origin; determines the OAuth redirect URI and the client ID metadata document URL |
 | `HOST` | `0.0.0.0` | Bind address |
 | `PORT` | `8787` | Bind port |
+| `GATEWAY_UI_ENABLED` | `true` | Serves the management page at `/ui`, and redirects `/` to it |
 | `GATEWAY_DATABASE_URL` | unset | Postgres connection string; takes precedence over the file |
 | `GATEWAY_DATABASE_SCHEMA` | unset | Postgres schema to own the tables; worth setting away from `public` on a host that publishes it over HTTP |
 | `GATEWAY_DATABASE_FILE` | `:memory:` | SQLite path, used when no URL is set; set one of the two or nothing survives a restart |

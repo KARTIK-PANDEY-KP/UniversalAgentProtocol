@@ -50,6 +50,27 @@ what matters when you deploy.
 - Downstream authentication moved from shared API keys to the gateway's own
   OAuth resource, so each application has an attributable identity.
 
+## The management page
+
+`/ui` lists connections, adds them, toggles individual tools and shows the JSON
+to paste into a client. `/` redirects to it.
+
+Its real reason for existing is authorization. `/connect/:id` wants a bearer
+header that no address bar will send, so the link cannot simply be opened; the
+page asks `POST /api/v1/connections/{id}/authorize` with the key and follows the
+answer, which is the same flow with the credential in the one place a browser
+can put it. Authorizing an upstream is a click.
+
+The page is served unauthenticated because it holds nothing: the key is typed
+into the browser, kept in session storage for that tab, and sent as a header by
+script. Nothing authenticates by cookie, so there is no request forgery to
+defend against, and the document embeds no stored data at all — names and error
+messages come from upstream servers, and reach the page through `textContent`
+under a nonce-based content security policy that permits no other script.
+
+`GATEWAY_UI_ENABLED=false` removes both routes for deployments that want no
+HTML surface.
+
 ## The database
 
 The gateway creates its own schema on boot, so nothing has to be run first.
@@ -101,7 +122,7 @@ through the lock table rather than a shared file.
 
 ## Endpoints
 
-**Public.** `GET /healthz`, `GET /metrics`,
+**Public.** `GET /ui`, `GET /` (redirects to it), `GET /healthz`, `GET /metrics`,
 `GET /.well-known/oauth-protected-resource`,
 `GET /oauth/client-metadata.json`, `GET /.well-known/jwks.json`.
 
