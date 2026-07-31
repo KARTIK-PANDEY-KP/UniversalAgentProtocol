@@ -53,6 +53,15 @@ export interface MockAuthorizationServerOptions {
    * server hardened against assertion replay does.
    */
   rejectReplayedAssertions?: boolean;
+  /**
+   * Advertise CIMD, hand out authorization codes for such a client, and then
+   * refuse to redeem them. Servers do this when registration is where they
+   * attach something the client cannot declare for itself — PostHog adds a
+   * redirect URI for its region broker — so a client identified by a document
+   * it wrote itself gets through authorization and fails at the token
+   * endpoint, with an error about the request rather than the client.
+   */
+  refuseMetadataDocumentClientsAtToken?: boolean;
   /** Advertise DPoP and bind issued tokens to the proof key. */
   supportsDpop?: boolean;
   /** Refuse the first proof at each endpoint to hand out a nonce, as RFC 9449 allows. */
@@ -387,6 +396,19 @@ export class MockAuthorizationServer {
     const client = await this.authenticateClient(request, body);
     if (!client) {
       json(res, 401, { error: "invalid_client" });
+      return;
+    }
+    // Authorization succeeded for this client and redemption does not, which
+    // is the shape of a server whose registration step attaches something a
+    // self-declared client never had.
+    if (
+      this.options.refuseMetadataDocumentClientsAtToken &&
+      (body.get("client_id") ?? "").startsWith("http")
+    ) {
+      json(res, 400, {
+        error: "invalid_request",
+        error_description: "Unable to determine region for this authorization code",
+      });
       return;
     }
 

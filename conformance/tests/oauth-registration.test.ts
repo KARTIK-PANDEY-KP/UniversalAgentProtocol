@@ -67,6 +67,36 @@ describe("OAuth client registration", () => {
     expect(document["redirect_uris"]).toEqual([`${gateway.baseUrl}/oauth/callback`]);
   });
 
+  it("registers dynamically when a server advertises CIMD but will not redeem for one", async () => {
+    // Advertising the mechanism is not the same as supporting it. A server
+    // whose registration step attaches something the client cannot declare on
+    // its own behalf — PostHog adds a redirect URI for its region broker —
+    // lets a document-identified client through authorization and then refuses
+    // the code at the token endpoint. The code cannot come with us to a new
+    // client, so the user goes round once more, but they do get to finish.
+    const { gateway, upstream } = await scenario({
+      supportsCimd: true,
+      supportsDcr: true,
+      refuseMetadataDocumentClientsAtToken: true,
+    });
+
+    const first = await connectUpstream(gateway, upstream.url, { alias: "up" });
+    expect(first.connection.status).not.toBe("CONNECTED");
+    expect(await registrationOf(gateway)).toMatchObject({ registrationType: "DYNAMIC" });
+    expect(upstream.authorizationServer.stats.registrations).toBe(1);
+
+    const retry = await gateway.authorizeUrl(first.connection.connection_id);
+    await completeAuthorization(retry, {
+      gatewayApiKey: gateway.apiKey,
+      gatewayBaseUrl: gateway.baseUrl,
+    });
+    const settled = await gateway.getConnection(first.connection.connection_id);
+    expect(settled.status).toBe("CONNECTED");
+    // One replacement, not one per attempt: the refusal is remembered, so the
+    // second authorization does not choose the failing mechanism again.
+    expect(upstream.authorizationServer.stats.registrations).toBe(1);
+  });
+
   it("prefers CIMD over DCR when both are advertised", async () => {
     const { gateway, upstream } = await scenario({
       supportsCimd: true,

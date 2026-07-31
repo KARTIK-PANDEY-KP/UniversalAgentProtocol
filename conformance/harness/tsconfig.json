@@ -16,6 +16,9 @@
     },
     {
       "path": "../../packages/gateway"
+    },
+    {
+      "path": "../../packages/storage"
     }
   ]
 }

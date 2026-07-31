@@ -12,6 +12,7 @@ import {
   type TokenEndpointAuthMethod,
 } from "@uap/core";
 import { Metric, type Logger, type MetricsRegistry } from "@uap/observability";
+import { isPubliclyReachableHost } from "@uap/security";
 import type { CredentialVault, SafeFetcher, SigningKeyStore } from "@uap/security";
 import type { GatewayStore } from "@uap/storage";
 
@@ -80,6 +81,24 @@ function pickAuthMethod(
     if (advertised.includes(candidate)) return candidate;
   }
   return advertised[0] ?? "none";
+}
+
+/**
+ * Whether a stored registration still describes this gateway.
+ *
+ * A registration is a statement to the authorization server about where the
+ * client lives: the redirect URI it will return to, and for CIMD the URL of
+ * the document describing it. Change `GATEWAY_BASE_URL` — moving behind a
+ * tunnel is the usual way — and the stored statement is about somewhere else.
+ * The server has no reason to accept it and will not, so reusing it produces a
+ * request that cannot succeed and an error naming the redirect URI or the
+ * client id rather than the thing that actually changed.
+ */
+function madeByThisGateway(
+  record: OAuthClientRegistrationRecord,
+  redirectUri: string,
+): boolean {
+  return record.redirectUris.includes(redirectUri);
 }
 
 async function toResolved(
@@ -185,8 +204,37 @@ export class ClientIdMetadataDocumentStrategy
 
   constructor(private readonly deps: RegistrationDeps) {}
 
-  async supports(metadata: AuthorizationServerMetadata): Promise<boolean> {
+  async supports(
+    metadata: AuthorizationServerMetadata,
+    context: RegistrationContext,
+  ): Promise<boolean> {
     if (metadata.client_id_metadata_document_supported !== true) return false;
+    // A server that advertised this and then refused a client using it has
+    // settled the question, and it keeps advertising, so the answer has to be
+    // remembered rather than rediscovered. Otherwise every authorization picks
+    // the mechanism that does not work, fails, replaces the client, and offers
+    // the user another go at the same thing.
+    if (await this.refusedBefore(context)) {
+      this.deps.logger.warn("This server refused a metadata document client before", {
+        issuer: metadata.issuer,
+      });
+      return false;
+    }
+    // Being identified by a URL requires that the authorization server can
+    // fetch it, and a server out on the internet cannot fetch a loopback
+    // address. This is the ordinary case for a gateway run on a laptop, where
+    // the alternative is an authorization request the server refuses with
+    // "invalid client_id" and no way to proceed. A server that is itself local
+    // can reach a local document, which is why the test is a comparison rather
+    // than a rule about our own address.
+    if (!this.reachableFrom(metadata.issuer)) {
+      this.deps.logger.warn("This deployment cannot be identified by metadata URL", {
+        clientMetadataUrl: this.deps.identity.clientMetadataUrl,
+        issuer: metadata.issuer,
+        reason: "the authorization server cannot reach this address",
+      });
+      return false;
+    }
     // Being identified by URL only works if the document this deployment
     // publishes satisfies the invariants the specification places on it. A
     // gateway whose base URL has no path, or is plain HTTP in production,
@@ -208,6 +256,31 @@ export class ClientIdMetadataDocumentStrategy
     }
   }
 
+  private async refusedBefore(context: RegistrationContext): Promise<boolean> {
+    const past = await this.deps.store.registrations.list(
+      context.tenantId,
+      context.issuerRecord.id,
+    );
+    return past.some(
+      (record) => record.registrationType === "CIMD" && record.status === "REFUSED",
+    );
+  }
+
+  /**
+   * Whether this issuer stands a chance of fetching our document. A public
+   * address is reachable by anyone; a private one only by something equally
+   * private.
+   */
+  private reachableFrom(issuer: string): boolean {
+    try {
+      const ours = new URL(this.deps.identity.clientMetadataUrl).hostname;
+      if (isPubliclyReachableHost(ours)) return true;
+      return !isPubliclyReachableHost(new URL(issuer).hostname);
+    } catch {
+      return false;
+    }
+  }
+
   async getOrCreateRegistration(
     context: RegistrationContext,
   ): Promise<ResolvedClientRegistration> {
@@ -215,7 +288,15 @@ export class ClientIdMetadataDocumentStrategy
       context.tenantId,
       context.issuerRecord.id,
     );
-    if (existing?.registrationType === "CIMD") return toResolved(existing, this.deps);
+    if (existing?.registrationType === "CIMD") {
+      if (
+        existing.clientId === this.deps.identity.clientMetadataUrl &&
+        madeByThisGateway(existing, context.redirectUri)
+      ) {
+        return toResolved(existing, this.deps);
+      }
+      await this.deps.store.registrations.update(existing.id, { status: "INVALID" });
+    }
 
     const method = this.deps.identity.supportsPrivateKeyJwt
       ? pickAuthMethod(context.metadata.token_endpoint_auth_methods_supported, [
@@ -266,7 +347,11 @@ export class DynamicClientRegistrationStrategy
       context.tenantId,
       context.issuerRecord.id,
     );
-    if (existing?.registrationType === "DYNAMIC" && !this.isExpired(existing)) {
+    if (
+      existing?.registrationType === "DYNAMIC" &&
+      !this.isExpired(existing) &&
+      madeByThisGateway(existing, context.redirectUri)
+    ) {
       return toResolved(existing, this.deps);
     }
     if (existing?.registrationType === "DYNAMIC") {
@@ -280,7 +365,10 @@ export class DynamicClientRegistrationStrategy
     context: RegistrationContext,
     previousId: string,
   ): Promise<ResolvedClientRegistration> {
-    await this.deps.store.registrations.update(previousId, { status: "INVALID" });
+    // REFUSED rather than INVALID: this one is being replaced because the
+    // server would not use it, and the next attempt has to be able to tell
+    // that apart from a registration we retired for reasons of our own.
+    await this.deps.store.registrations.update(previousId, { status: "REFUSED" });
     return this.register(context);
   }
 

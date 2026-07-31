@@ -79,6 +79,28 @@ export function issuerToWellKnown(issuer: string, suffix: string): string[] {
 }
 
 /** RFC 9728 well-known locations derived from the resource URL. */
+/**
+ * What identifies a protected resource for OAuth: its origin and its path.
+ *
+ * The query is not part of it, because RFC 9728 derives the metadata URL from
+ * the path alone. Two URLs differing only in their query therefore share one
+ * metadata document by construction, and a server has no way to describe them
+ * separately — so treating them as different resources is asking for a
+ * distinction the protocol cannot express. Endpoints that carry configuration
+ * in the query, as Supabase's MCP server carries its project reference, are
+ * unreachable otherwise.
+ *
+ * This is narrower than `canonicalizeUrl`, which keeps the query and is what
+ * identifies a *connection*: two projects on one host are two connections, and
+ * collapsing them would be a tenant's data in the wrong place. They are
+ * different questions and the answers differ.
+ */
+export function resourceIdentifier(input: string, policy: UrlPolicy): string {
+  const url = new URL(canonicalizeUrl(input, policy));
+  url.search = "";
+  return url.toString().replace(/\/$/u, "");
+}
+
 export function resourceMetadataCandidates(resourceUrl: string): string[] {
   const url = parseAbsoluteUrl(resourceUrl);
   const path = url.pathname.replace(/\/+$/u, "");

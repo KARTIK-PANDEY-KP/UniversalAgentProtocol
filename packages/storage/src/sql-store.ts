@@ -319,6 +319,11 @@ export class SqlGatewayStore implements GatewayStore {
           issuer_id: issuerId,
           status: "ACTIVE",
         }),
+      list: async (tenantId, issuerId) =>
+        await registrationTable.findMany(
+          { tenant_id: tenantId, issuer_id: issuerId },
+          "issued_at",
+        ),
       update: async (id, patch) => {
         await registrationTable.update({ id }, patch);
         return requireFound(await registrationTable.findOne({ id }), "Client registration");

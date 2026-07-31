@@ -53,6 +53,9 @@ importers:
       '@uap/observability':
         specifier: workspace:*
         version: link:../../packages/observability
+      '@uap/storage':
+        specifier: workspace:*
+        version: link:../../packages/storage
 
   conformance/tests:
     dependencies:

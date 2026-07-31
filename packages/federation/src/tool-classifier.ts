@@ -2,8 +2,13 @@ import { isRecord, type JsonObject, type ToolRiskLevel } from "@uap/core";
 
 const PATTERNS: { level: ToolRiskLevel; pattern: RegExp }[] = [
   {
+    // `exec` and its synonyms mean the tool does whatever the caller passes
+    // it, so the only safe reading is the worst thing it could be asked to do.
+    // `run` is left out: it prefaces too many harmless things — run_query,
+    // run_report — to carry the same weight.
     level: "DESTRUCTIVE",
-    pattern: /\b(delete|destroy|drop|purge|remove|erase|wipe|revoke|terminate|uninstall)\b/iu,
+    pattern:
+      /\b(delete|destroy|drop|purge|remove|erase|wipe|revoke|terminate|uninstall|exec|execute|eval|invoke|shell|spawn)\b/iu,
   },
   // "subscription" is deliberately absent. MCP uses the word for resource
   // subscriptions, so it appears in tools that have nothing to do with money,
@@ -24,6 +29,10 @@ const PATTERNS: { level: ToolRiskLevel; pattern: RegExp }[] = [
   },
 ];
 
+/** Verbs whose presence at the head of a name means the tool reads. */
+const READ_VERBS =
+  /^(get|list|read|search|find|query|describe|fetch|show|view|inspect|count|lookup)$/iu;
+
 /**
  * Classifies a tool from the generic signals MCP exposes: the standard
  * annotation hints first, then a name and description heuristic. No provider
@@ -39,8 +48,21 @@ export function classifyTool(
     if (annotations["destructiveHint"] === true) return "DESTRUCTIVE";
     if (annotations["readOnlyHint"] === true) return "READ_ONLY";
   }
-  const haystack = `${tokenize(name)} ${description ?? ""}`;
+  const words = tokenize(name).split(" ");
+  const haystack = `${words.join(" ")} ${description ?? ""}`;
+  // MCP tool names read verb first, and the verb is the part that says whether
+  // anything changes; the rest is the noun it acts on. Matching the whole name
+  // lets that noun outrank the verb, which is how `get_merge_request` and
+  // `search_comments` — both plainly reads — come out as writes, on the
+  // strength of "merge" and "comment".
+  //
+  // Only the write reading is suppressed. A read verb is not licence to ignore
+  // a destructive or administrative word, because the cost of being wrong runs
+  // one way: too cautious is a confirmation prompt, too relaxed is a tool that
+  // slipped past the policy meant to catch it.
+  const readVerb = words[0] !== undefined && READ_VERBS.test(words[0]);
   for (const { level, pattern } of PATTERNS) {
+    if (level === "WRITE" && readVerb) continue;
     if (pattern.test(haystack)) {
       if (
         level === "WRITE" &&

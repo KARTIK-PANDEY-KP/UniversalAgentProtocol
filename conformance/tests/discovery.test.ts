@@ -121,6 +121,35 @@ describe("OAuth discovery", () => {
     expect(gateway.services.metrics.render()).toContain("resource_mismatch_total");
   });
 
+  it("accepts metadata for an endpoint whose query carries its configuration", async () => {
+    // RFC 9728 derives the metadata URL from the path, so an endpoint and the
+    // same endpoint with a query string necessarily share one document and the
+    // server cannot describe them separately. Treating them as two resources
+    // asks for a distinction the protocol has no way to express, and locks out
+    // every server that configures itself through the query — Supabase's MCP
+    // endpoint takes its project reference that way.
+    const mcpServer = new MockMcpServer({
+      requireAuth: true,
+      authorizationServers: ["https://issuer.example.com"],
+      tools: [{ name: "ping" }],
+    });
+    await mcpServer.start();
+    started.push(mcpServer);
+
+    const gateway = await newGateway();
+    const discovery = await gateway.services.discovery.discoverProtectedResource(
+      `${mcpServer.url}?project_ref=abc&read_only=true`,
+    );
+
+    expect(discovery.metadata.resource).toBe(mcpServer.url);
+    expect(discovery.metadata.authorization_servers).toEqual([
+      "https://issuer.example.com",
+    ]);
+    // The relaxation is confined to the query. A different path is still a
+    // different resource.
+    expect(gateway.services.metrics.render()).not.toContain("resource_mismatch_total 1");
+  });
+
   it("rejects protected resource metadata that lists no authorization server", async () => {
     const mcpServer = new MockMcpServer({
       requireAuth: true,

@@ -165,6 +165,29 @@ export function classifyAddress(address: string): IpDisposition {
  * name. Node connects straight to a literal without consulting the `lookup`
  * hook, so a literal has to be judged before the request is made.
  */
+/** Suffixes reserved for names only a local resolver can answer. */
+const LOCAL_SUFFIXES = [".localhost", ".local", ".internal", ".home.arpa"];
+
+/**
+ * Whether a host stands any chance of being reached by a server elsewhere on
+ * the internet.
+ *
+ * This is not a question about what this machine can reach, and so it is not
+ * answered by resolving anything: the resolver that matters belongs to the
+ * other party. A literal is judged by its address, and a name is taken at face
+ * value unless it is one of the suffixes reserved for local resolution.
+ *
+ * The caller with a use for this is any protocol that hands a third party a
+ * URL and expects them to fetch it.
+ */
+export function isPubliclyReachableHost(hostname: string): boolean {
+  const literal = literalAddressOf(hostname);
+  if (literal) return classifyAddress(literal) === "PUBLIC";
+  const lowered = hostname.toLowerCase().replace(/\.$/u, "");
+  if (lowered === "localhost") return false;
+  return !LOCAL_SUFFIXES.some((suffix) => lowered.endsWith(suffix));
+}
+
 export function literalAddressOf(hostname: string): string | null {
   const bare =
     hostname.startsWith("[") && hostname.endsWith("]")

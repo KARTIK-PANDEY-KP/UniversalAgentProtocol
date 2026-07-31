@@ -130,7 +130,14 @@ export interface OAuthClientRegistrationRecord {
   issuedAt: number;
   secretExpiresAt: number | null;
   metadataJson: JsonObject;
-  status: "ACTIVE" | "INVALID";
+  /**
+   * `INVALID` is a registration this gateway retired — superseded, expired, or
+   * made under an address it no longer has. `REFUSED` is one the authorization
+   * server would not use, which is a fact about the server rather than about
+   * us and so must outlive the record: without the distinction the mechanism
+   * that failed is chosen again on the next attempt, forever.
+   */
+  status: "ACTIVE" | "INVALID" | "REFUSED";
 }
 
 export interface UpstreamConnection {

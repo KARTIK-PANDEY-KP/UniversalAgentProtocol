@@ -90,6 +90,8 @@ export interface ClientRegistrationRepository {
     tenantId: string,
     issuerId: string,
   ): Promise<OAuthClientRegistrationRecord | null>;
+  /** Every registration for this issuer, retired ones included. */
+  list(tenantId: string, issuerId: string): Promise<OAuthClientRegistrationRecord[]>;
   update(
     id: string,
     patch: Partial<OAuthClientRegistrationRecord>,
