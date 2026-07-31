@@ -40,6 +40,38 @@ describe("tool classification", () => {
     expect(classifyTool("frobnicate", "Frobnicates the widget", null)).toBe("UNKNOWN");
   });
 
+  it("reads the verb, not the noun it acts on", () => {
+    // Every one of these is a read whose subject happens to be named after a
+    // write. Matching the whole name lets the noun win, and the tool is then
+    // gated as if it changed something.
+    expect(classifyTool("get_merge_request", "Fetches a merge request", null)).toBe(
+      "READ_ONLY",
+    );
+    expect(classifyTool("list_merge_request_comments", null, null)).toBe("READ_ONLY");
+    expect(classifyTool("search_comments", "Searches comments", null)).toBe("READ_ONLY");
+    expect(classifyTool("list_open_issues", null, null)).toBe("READ_ONLY");
+  });
+
+  it("does not let a reading verb excuse a destructive one", () => {
+    // The suppression is only of the write reading. Being too cautious costs a
+    // confirmation prompt; being too relaxed lets a tool past the policy meant
+    // to catch it, so a read verb never lowers the verdict below a write.
+    expect(classifyTool("search_and_delete", "Finds and removes matches", null)).toBe(
+      "DESTRUCTIVE",
+    );
+    expect(classifyTool("get_role", "Reads one role", null)).toBe("ADMINISTRATIVE");
+  });
+
+  it("treats a tool that runs whatever it is given as destructive", () => {
+    // Its risk is whatever the caller asks of it, so the only safe reading is
+    // the worst one. PostHog's MCP server exposes exactly this, under `exec`.
+    expect(classifyTool("exec", "Execute a PostHog API operation", null)).toBe("DESTRUCTIVE");
+    expect(classifyTool("execute_sql", null, null)).toBe("DESTRUCTIVE");
+    expect(classifyTool("eval_expression", null, null)).toBe("DESTRUCTIVE");
+    // `run` is too common in harmless tools to carry the same weight.
+    expect(classifyTool("run_report", "Runs a saved report", null)).not.toBe("DESTRUCTIVE");
+  });
+
   it("treats a write against the open world as reaching outside", () => {
     expect(classifyTool("create_post", "Creates a post", { openWorldHint: true })).toBe(
       "EXTERNAL_COMMUNICATION",
