@@ -23,18 +23,16 @@ const drivers: { name: string; open: () => Promise<SqlGatewayStore> }[] = [
   { name: "sqlite", open: () => createInMemoryStore() },
 ];
 
-const postgresDrivers: SqlDriver[] = [];
+const postgresDrivers: { driver: SqlDriver; schema: string }[] = [];
 if (POSTGRES_URL) {
   drivers.push({
     name: "postgres",
     open: async () => {
       // A schema per store, because these tests use fixed ids and would
       // otherwise read each other's rows.
-      const driver = new PostgresDriver({
-        connectionString: POSTGRES_URL,
-        schema: `t_${randomToken(8).toLowerCase().replace(/[^a-z0-9]/gu, "")}`,
-      });
-      postgresDrivers.push(driver);
+      const schema = `t_${randomToken(8).toLowerCase().replace(/[^a-z0-9]/gu, "")}`;
+      const driver = new PostgresDriver({ connectionString: POSTGRES_URL, schema });
+      postgresDrivers.push({ driver, schema });
       const store = new SqlGatewayStore(driver);
       await store.init();
       return store;
@@ -43,7 +41,12 @@ if (POSTGRES_URL) {
 }
 
 afterAll(async () => {
-  for (const driver of postgresDrivers) await driver.close().catch(() => undefined);
+  // Seventeen tables apiece, left behind on every run against a database that
+  // is usually not disposable.
+  for (const { driver, schema } of postgresDrivers) {
+    await driver.run(`DROP SCHEMA IF EXISTS ${schema} CASCADE`, []).catch(() => undefined);
+    await driver.close().catch(() => undefined);
+  }
 });
 
 async function seedServer(

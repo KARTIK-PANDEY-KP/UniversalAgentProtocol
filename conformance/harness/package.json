@@ -14,6 +14,7 @@
   "dependencies": {
     "@uap/core": "workspace:*",
     "@uap/gateway": "workspace:*",
-    "@uap/observability": "workspace:*"
+    "@uap/observability": "workspace:*",
+    "@uap/storage": "workspace:*"
   }
 }

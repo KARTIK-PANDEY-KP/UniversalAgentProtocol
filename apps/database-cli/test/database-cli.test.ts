@@ -11,11 +11,13 @@ import {
   resolveTarget,
   TargetError,
 } from "@uap/database-cli";
-import { TABLE_NAMES } from "@uap/storage";
+import { PostgresDriver, TABLE_NAMES } from "@uap/storage";
 
 const POSTGRES_URL = process.env["TEST_POSTGRES_URL"];
 
 const directories: string[] = [];
+const schemas: string[] = [];
+
 function tempFile(): string {
   const directory = mkdtempSync(join(tmpdir(), "uap-db-"));
   directories.push(directory);
@@ -77,10 +79,11 @@ describe.each(
       ? [
           {
             name: "postgres",
-            options: (): { url: string; schema: string } => ({
-              url: POSTGRES_URL,
-              schema: `c_${Math.random().toString(36).slice(2, 10)}`,
-            }),
+            options: (): { url: string; schema: string } => {
+              const schema = `c_${Math.random().toString(36).slice(2, 10)}`;
+              schemas.push(schema);
+              return { url: POSTGRES_URL, schema };
+            },
           },
         ]
       : []),
@@ -122,8 +125,16 @@ describe.each(
   });
 });
 
-afterAll(() => {
+afterAll(async () => {
   for (const directory of directories.splice(0)) {
     rmSync(directory, { recursive: true, force: true });
   }
+  // A temporary directory is cleaned up above; a schema on someone's Postgres
+  // deserves the same courtesy, and there are seventeen tables in each.
+  if (!POSTGRES_URL || schemas.length === 0) return;
+  const driver = new PostgresDriver({ connectionString: POSTGRES_URL });
+  for (const schema of schemas.splice(0)) {
+    await driver.run(`DROP SCHEMA IF EXISTS ${schema} CASCADE`, []).catch(() => undefined);
+  }
+  await driver.close();
 });

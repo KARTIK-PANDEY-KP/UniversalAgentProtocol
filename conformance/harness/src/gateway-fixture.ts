@@ -4,6 +4,7 @@ import type { AddressInfo } from "node:net";
 
 import { Gateway, type GatewayConfig } from "@uap/gateway";
 import { silentSink, type LogSink } from "@uap/observability";
+import { PostgresDriver } from "@uap/storage";
 
 /**
  * The suite runs against SQLite by default and against Postgres when one is
@@ -13,6 +14,24 @@ import { silentSink, type LogSink } from "@uap/observability";
  * Each gateway gets a schema of its own, because these tests share tenant and
  * connection ids and a shared schema would have them reading each other's rows.
  */
+/**
+ * Takes the schema away again when the gateway stops.
+ *
+ * A suite run stands up something over a hundred gateways, and a schema holds
+ * seventeen tables, so leaving them behind is tens of thousands of relations
+ * per run against one database. That is not untidiness: the catalogue grows
+ * until the server itself gives out, which it does in the middle of some
+ * unrelated test, looking like a bug in whatever happened to be running.
+ */
+async function dropSchema(connectionString: string, schema: string): Promise<void> {
+  const driver = new PostgresDriver({ connectionString });
+  try {
+    await driver.run(`DROP SCHEMA IF EXISTS ${schema} CASCADE`, []);
+  } finally {
+    await driver.close();
+  }
+}
+
 function databaseConfig(): Partial<GatewayConfig> {
   const url = process.env["TEST_POSTGRES_URL"];
   if (!url) return { databaseFile: ":memory:" };
@@ -115,8 +134,11 @@ export class GatewayFixture {
   }
 
   async stop(): Promise<void> {
+    const schema = this.gateway?.services.config.databaseSchema ?? null;
+    const url = this.gateway?.services.config.databaseUrl ?? null;
     await this.gateway?.close();
     this.gateway = null;
+    if (schema && url) await dropSchema(url, schema);
   }
 
   /** Adds a second principal so cross-tenant isolation can be exercised. */
