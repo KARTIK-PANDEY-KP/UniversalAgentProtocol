@@ -210,7 +210,14 @@ export function registerRoutes(
       // difference between one extra hop and a connection they cannot finish.
       const retryId = replacedClientConnectionId(gatewayError);
       if (retryId) {
-        res.writeHead(302, { location: `${config.baseUrl}/connect/${retryId}` });
+        // To the page rather than to /connect/:id, which authenticates the
+        // request and so cannot be reached by the browser that arrives here.
+        // Sending someone from a failed flow to a "sign in required" notice
+        // ends the retry before it starts.
+        const target = config.uiEnabled
+          ? `${config.baseUrl}/ui?authorize=${encodeURIComponent(retryId)}`
+          : `${config.baseUrl}/connect/${retryId}`;
+        res.writeHead(302, { location: target });
         res.end();
         return;
       }

@@ -204,8 +204,22 @@ export class ClientIdMetadataDocumentStrategy
 
   constructor(private readonly deps: RegistrationDeps) {}
 
-  async supports(metadata: AuthorizationServerMetadata): Promise<boolean> {
+  async supports(
+    metadata: AuthorizationServerMetadata,
+    context: RegistrationContext,
+  ): Promise<boolean> {
     if (metadata.client_id_metadata_document_supported !== true) return false;
+    // A server that advertised this and then refused a client using it has
+    // settled the question, and it keeps advertising, so the answer has to be
+    // remembered rather than rediscovered. Otherwise every authorization picks
+    // the mechanism that does not work, fails, replaces the client, and offers
+    // the user another go at the same thing.
+    if (await this.refusedBefore(context)) {
+      this.deps.logger.warn("This server refused a metadata document client before", {
+        issuer: metadata.issuer,
+      });
+      return false;
+    }
     // Being identified by a URL requires that the authorization server can
     // fetch it, and a server out on the internet cannot fetch a loopback
     // address. This is the ordinary case for a gateway run on a laptop, where
@@ -240,6 +254,16 @@ export class ClientIdMetadataDocumentStrategy
       });
       return false;
     }
+  }
+
+  private async refusedBefore(context: RegistrationContext): Promise<boolean> {
+    const past = await this.deps.store.registrations.list(
+      context.tenantId,
+      context.issuerRecord.id,
+    );
+    return past.some(
+      (record) => record.registrationType === "CIMD" && record.status === "REFUSED",
+    );
   }
 
   /**
@@ -341,7 +365,10 @@ export class DynamicClientRegistrationStrategy
     context: RegistrationContext,
     previousId: string,
   ): Promise<ResolvedClientRegistration> {
-    await this.deps.store.registrations.update(previousId, { status: "INVALID" });
+    // REFUSED rather than INVALID: this one is being replaced because the
+    // server would not use it, and the next attempt has to be able to tell
+    // that apart from a registration we retired for reasons of our own.
+    await this.deps.store.registrations.update(previousId, { status: "REFUSED" });
     return this.register(context);
   }
 

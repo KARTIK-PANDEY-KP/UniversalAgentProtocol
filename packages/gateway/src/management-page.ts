@@ -186,7 +186,7 @@ pre {
     const response = await fetch(path, Object.assign({}, options, { headers }));
     if (response.status === 401) {
       sessionStorage.removeItem(KEY);
-      render();
+      void render();
       throw new Error("That key was rejected.");
     }
     if (!response.ok) {
@@ -207,6 +207,19 @@ pre {
     if (className) element.className = className;
     if (text !== undefined) element.textContent = text;
     return element;
+  }
+
+  /**
+   * The browser cannot open /connect/:id, which wants a bearer header no
+   * address bar will send. Asking for the provider's URL and following it is
+   * the same flow with the credential in the one place a browser can put it.
+   */
+  async function startAuthorization(connectionId) {
+    const result = await api(
+      "/api/v1/connections/" + encodeURIComponent(connectionId) + "/authorize",
+      { method: "POST", body: JSON.stringify({ return_to: location.origin + "/ui" }) },
+    );
+    location.href = result.authorization_url;
   }
 
   const STATUS = {
@@ -242,21 +255,12 @@ pre {
       connection.status === "AUTHORIZATION_REQUIRED" || connection.status === "REAUTH_REQUIRED";
     if (needsAuth) {
       const authorize = node("button", "primary", "Authorize");
-      authorize.addEventListener("click", async () => {
+      authorize.addEventListener("click", () => {
         authorize.disabled = true;
-        try {
-          // The browser cannot open /connect/:id, which wants a bearer header
-          // no address bar will send. Asking here and following the answer is
-          // the same flow with the credential in the one place it can go.
-          const result = await api(
-            "/api/v1/connections/" + encodeURIComponent(connection.connection_id) + "/authorize",
-            { method: "POST", body: JSON.stringify({ return_to: location.origin + "/ui" }) },
-          );
-          location.href = result.authorization_url;
-        } catch (error) {
+        startAuthorization(connection.connection_id).catch((error) => {
           authorize.disabled = false;
           say(error.message, "bad");
-        }
+        });
       });
       row.append(authorize);
     } else {
@@ -326,6 +330,29 @@ pre {
     return wrapper;
   }
 
+  /**
+   * The callback sends the browser here with ?authorize=<id> when the gateway
+   * had to replace the client mid-flow: the code it was holding belonged to
+   * the old one and cannot be exchanged, so the only way to finish is to go
+   * round again. Doing it without a second click keeps that a detail of the
+   * protocol rather than a thing the user has to understand.
+   */
+  async function resumeFromQuery() {
+    const params = new URLSearchParams(location.search);
+    const connectionId = params.get("authorize");
+    if (!connectionId) return false;
+    // Cleared first, so a failure does not leave a URL that retries forever.
+    history.replaceState(null, "", location.pathname);
+    say("Finishing authorization with a new client…", "ok");
+    try {
+      await startAuthorization(connectionId);
+      return true;
+    } catch (error) {
+      say(error.message, "bad");
+      return false;
+    }
+  }
+
   async function load() {
     const target = el("connections");
     try {
@@ -346,12 +373,14 @@ pre {
     }
   }
 
-  function render() {
+  async function render() {
     const signedIn = Boolean(key());
     el("signin").hidden = signedIn;
     el("app").hidden = !signedIn;
     el("sign-out").hidden = !signedIn;
     if (signedIn) {
+      // A navigation away ends this render; nothing below needs to run.
+      if (await resumeFromQuery()) return;
       el("snippet").textContent = JSON.stringify(
         {
           mcpServers: {
@@ -373,12 +402,12 @@ pre {
     sessionStorage.setItem(KEY, el("key").value.trim());
     el("key").value = "";
     say("", "");
-    render();
+    void render();
   });
 
   el("sign-out").addEventListener("click", () => {
     sessionStorage.removeItem(KEY);
-    render();
+    void render();
   });
 
   el("add-form").addEventListener("submit", async (event) => {
@@ -408,7 +437,7 @@ pre {
     button.disabled = false;
   });
 
-  render();
+  void render();
 })();
 </script>
 </body>

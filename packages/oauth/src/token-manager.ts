@@ -10,8 +10,10 @@ import {
   type AuthorizationServerMetadata,
   type Clock,
   type JsonObject,
+  type OAuthClientRegistrationRecord,
   type OAuthIssuerRecord,
   type OAuthTransaction,
+  type TokenEndpointAuthMethod,
   type UpstreamConnection,
   type UpstreamRequestTarget,
 } from "@uap/core";
@@ -267,7 +269,7 @@ export class OAuthTokenManager {
         if (!replaced) throw error;
         throw new GatewayError(
           "AUTHORIZATION_REQUIRED",
-          "This server would not accept the client it issued us. " +
+          "This server would not accept the client we used. " +
             "A new one is registered; authorize once more to finish connecting.",
           { data: { connectionId: connection.id, reason: "client_replaced" }, cause: error },
         );
@@ -763,15 +765,16 @@ export class OAuthTokenManager {
     used: ClientCredentials,
     error: unknown,
   ): Promise<boolean> {
-    if (!(error instanceof OAuthProtocolError) || error.error !== "invalid_client") {
-      return false;
-    }
+    if (!(error instanceof OAuthProtocolError)) return false;
     if (!connection.oauthIssuerId || !connection.oauthClientRegistrationId) return false;
     const [issuer, registration] = await Promise.all([
       this.deps.store.issuers.get(connection.oauthIssuerId),
       this.deps.store.registrations.get(connection.oauthClientRegistrationId),
     ]);
-    if (!issuer || !registration || registration.registrationType !== "DYNAMIC") return false;
+    if (!issuer || !registration) return false;
+
+    const avoidAuthMethods = methodsToAvoid(registration, used, error);
+    if (!avoidAuthMethods) return false;
 
     const replacement = await this.deps.registrations
       .reregister(
@@ -781,7 +784,7 @@ export class OAuthTokenManager {
           metadata: issuer.metadataJson as unknown as AuthorizationServerMetadata,
           redirectUri: this.deps.config.identity.redirectUri,
           requestedScopes: connection.requestedScopes,
-          avoidAuthMethods: [used.tokenEndpointAuthMethod],
+          avoidAuthMethods,
         },
         registration.id,
       )
@@ -891,4 +894,43 @@ export class OAuthTokenManager {
       lastErrorMessageRedacted: clampText((error as Error).message, 200),
     });
   }
+}
+
+/**
+ * Whether taking a different client could plausibly help, and what the
+ * replacement must avoid. Null means the failure is not about the client and
+ * replacing it would discard a working registration for nothing.
+ *
+ * The two cases fail for different reasons. A dynamically registered client
+ * the server then refuses to authenticate has told us the authentication
+ * method it advertised does not work here, so the replacement must avoid that
+ * method — the client was fine, the way it proved itself was not.
+ *
+ * A client identified by metadata document is the other way round: there is no
+ * method to avoid, the mechanism itself is what the server cannot use. Some
+ * advertise CIMD and only really support clients they registered themselves,
+ * because registration is where they attach things a client cannot declare on
+ * its own behalf — an extra redirect URI for a region broker, say. Registering
+ * properly is the only way through, and it is available whenever the server
+ * offers dynamic registration at all.
+ *
+ * `invalid_grant` is excluded from both. It says the code was spent or expired,
+ * which is a statement about the code and not about who asked.
+ */
+function methodsToAvoid(
+  registration: OAuthClientRegistrationRecord,
+  used: ClientCredentials,
+  error: OAuthProtocolError,
+): TokenEndpointAuthMethod[] | null {
+  if (registration.registrationType === "DYNAMIC") {
+    return error.error === "invalid_client" ? [used.tokenEndpointAuthMethod] : null;
+  }
+  if (registration.registrationType === "CIMD") {
+    const aboutTheClient =
+      error.error === "invalid_request" ||
+      error.error === "invalid_client" ||
+      error.error === "unauthorized_client";
+    return aboutTheClient ? [] : null;
+  }
+  return null;
 }

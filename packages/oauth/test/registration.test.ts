@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import type { AuthorizationServerMetadata } from "@uap/core";
+import type {
+  AuthorizationServerMetadata,
+  OAuthClientRegistrationRecord,
+} from "@uap/core";
 import { MetricsRegistry, createLogger, silentSink } from "@uap/observability";
 import { CredentialVault, LocalKeyring } from "@uap/security";
 import { createInMemoryStore } from "@uap/storage";
@@ -24,14 +27,27 @@ const CIMD_SERVER: AuthorizationServerMetadata = {
  * of the registration dependencies are left out rather than faked into
  * something that pretends to work.
  */
-function strategy(baseUrl: string, allowHttp: boolean): ClientIdMetadataDocumentStrategy {
+function strategy(
+  baseUrl: string,
+  allowHttp: boolean,
+  past: Partial<OAuthClientRegistrationRecord>[] = [],
+): ClientIdMetadataDocumentStrategy {
   const deps = {
     identity: gatewayIdentityFromBaseUrl(baseUrl),
     logger: createLogger({ sink: silentSink }),
+    store: { registrations: { list: async () => past } },
     allowHttp,
   } as unknown as RegistrationDeps;
   return new ClientIdMetadataDocumentStrategy(deps);
 }
+
+/** `supports` reads the tenant and issuer only to look up past attempts. */
+const CONTEXT = {
+  tenantId: "tenant_a",
+  issuerRecord: { id: "iss_1" },
+  redirectUri: "https://gateway.example.com/oauth/callback",
+  requestedScopes: [],
+} as unknown as Parameters<ClientIdMetadataDocumentStrategy["supports"]>[1];
 
 describe("client ID metadata documents", () => {
   it("accepts a document whose client_id is its own URL", () => {
@@ -64,7 +80,7 @@ describe("client ID metadata documents", () => {
   });
 
   it("offers itself when the deployment can publish a valid document", async () => {
-    expect(await strategy("https://gateway.example.com", false).supports(CIMD_SERVER)).toBe(
+    expect(await strategy("https://gateway.example.com", false).supports(CIMD_SERVER, CONTEXT)).toBe(
       true,
     );
   });
@@ -72,7 +88,7 @@ describe("client ID metadata documents", () => {
   it("stands aside for a plain HTTP deployment in production", async () => {
     // Left alone this would produce a registration the authorization server
     // rejects; standing aside lets dynamic registration take the connection.
-    expect(await strategy("http://gateway.example.com", false).supports(CIMD_SERVER)).toBe(
+    expect(await strategy("http://gateway.example.com", false).supports(CIMD_SERVER, CONTEXT)).toBe(
       false,
     );
   });
@@ -84,7 +100,7 @@ describe("client ID metadata documents", () => {
     // case: without this the authorization request is built, sent, and refused
     // with "invalid client_id", where standing aside registers dynamically and
     // connects.
-    expect(await strategy("http://127.0.0.1:8080", true).supports(CIMD_SERVER)).toBe(false);
+    expect(await strategy("http://127.0.0.1:8080", true).supports(CIMD_SERVER, CONTEXT)).toBe(false);
   });
 
   it("still offers itself to an authorization server that is equally local", async () => {
@@ -95,7 +111,7 @@ describe("client ID metadata documents", () => {
       ...CIMD_SERVER,
       issuer: "http://127.0.0.1:9100",
     };
-    expect(await strategy("http://127.0.0.1:8080", true).supports(local)).toBe(true);
+    expect(await strategy("http://127.0.0.1:8080", true).supports(local, CONTEXT)).toBe(true);
   });
 
   it("re-registers when the gateway has moved since it last registered", async () => {
@@ -169,7 +185,7 @@ describe("client ID metadata documents", () => {
       await strategy("https://gateway.example.com", false).supports({
         ...CIMD_SERVER,
         client_id_metadata_document_supported: false,
-      }),
+      }, CONTEXT),
     ).toBe(false);
   });
 });
